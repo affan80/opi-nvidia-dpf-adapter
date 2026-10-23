@@ -1,13 +1,59 @@
+# yaml-language-server: $schema=./fieldmapping.schema.json
 apiVersion: translation.opi.nvidia.com/v1alpha1
 kind: FieldMapping
 metadata:
   name: servicefunctionchain
   description: |
-    Each NetworkFunction with a Helm chart becomes a DPUService.
+    Direct ownership model. One ServiceFunctionChain emits DPUService,
+    DPUServiceInterface, and DPUServiceChain. It never emits
+    DPUDeployment, DPUServiceTemplate, or DPUServiceConfiguration.
+
+    DPUDeployment's controller creates those same three kinds (and
+    DPUSets against a BFB/Flavor). Emitting both would give two
+    controllers the same children. BFB and Flavor are already owned
+    by the DataProcessingUnit mapping.
+
     Image-only network functions are skipped: DPF has no field that
-    accepts a bare container image. That is the image-versus-chart
-    mismatch; the OPI API upgrade (Chart *HelmChartSource) is the
-    source side of this mapping.
+    accepts a bare container image.
+
+    Chart fields are NOT on opiproject/dpu-operator main. They come from
+    unmerged PR #6 (HelmChartSource), pinned in config/versions.yaml
+    (commit c107ef71, patchState: unmerged). Do not treat them as
+    upstream-stable. The mapping only emits when 'chart' in item, so a
+    cluster still on the image-only CRD produces no children rather
+    than writing unsupported fields.
+
+    Resource graph (owner = OPI ServiceFunctionChain):
+
+      DPUService
+        name:      item.name
+        namespace: source.metadata.namespace, else dpf-operator-system
+        owner:     ServiceFunctionChain (controller ownerRef if same
+                   namespace; annotation + finalizer if cross-namespace)
+        gc:        Kubernetes GC (same ns) or cleanup finalizer (x-ns)
+
+      DPUServiceInterface
+        name:      item.name + '-ifc'
+        namespace: same as DPUService
+        owner:     same ServiceFunctionChain, same GC rules
+        notes:     interfaceType=service. OPI has no NAD; network
+                   defaults to 'default'. interfaceName defaults to
+                   net0 (DPF maxLength 15). Label service=<nf-name>
+                   is what the chain matchLabels select.
+
+      DPUServiceChain
+        name:      source.metadata.name
+        namespace: same as DPUService
+        owner:     same ServiceFunctionChain, same GC rules
+        notes:     one switch, one port per chart NF, in list order.
+                   Not a DPUDeployment-generated chain.
+
+    Not generated (DPF-owned descendants — do not SSA them):
+      ServiceInterfaceSet, ServiceInterface, ServiceChainSet,
+      ServiceChain, Helm releases / DaemonSets.
+
+    Forbidden emits (second owner of the same children):
+      DPUDeployment, DPUServiceTemplate, DPUServiceConfiguration.
 source:
   group: config.openshift.io
   version: v1
@@ -32,26 +78,75 @@ emit:
       - to: spec.helmChart.source.repoURL
         cel: "item.chart.repository"
         required: true
+      # OPI requires chart.name. DPF has helmChart.source.chart. Dropping
+      # it left the chart identity in the source and not on the DPUService.
+      - to: spec.helmChart.source.chart
+        cel: "item.chart.name"
+        required: true
       - to: spec.helmChart.source.version
         cel: "item.chart.version"
         required: true
+      - to: spec.interfaces
+        cel: "[item.name + '-ifc']"
       - to: spec.paused
         value: false
-      # DPF CEL: security.privileged must be set when deployInCluster is
-      # false (the default). NVIDIA DPUServices run on the DPU.
+      # DPF CEL on the v26.4 fixture: security.privileged must be set when
+      # deployInCluster is false (the default). The live dh2 CRD (2026-09-07)
+      # does not have spec.security; applyOne drops that path and retries.
       - to: spec.security.privileged
         value: true
 
-# Mirror DPUService readiness back onto the ServiceFunctionChain.
+  - target:
+      group: svc.dpu.nvidia.com
+      version: v1alpha1
+      kind: DPUServiceInterface
+    forEach:
+      in: spec.networkFunctions
+    when: "'chart' in item"
+    name:
+      cel: "item.name + '-ifc'"
+    fields:
+      - to: spec.template.spec.template.metadata.labels
+        cel: "{'service': item.name}"
+      - to: spec.template.spec.template.spec.interfaceType
+        value: service
+      - to: spec.template.spec.template.spec.service.serviceID
+        from: item.name
+        required: true
+      # DPF requires interfaceName (1..15) and a NAD name. OPI SFC has
+      # neither; these are documented defaults, not invented topology.
+      - to: spec.template.spec.template.spec.service.interfaceName
+        value: net0
+      - to: spec.template.spec.template.spec.service.network
+        value: default
+
+  - target:
+      group: svc.dpu.nvidia.com
+      version: v1alpha1
+      kind: DPUServiceChain
+    when: "source.spec.networkFunctions.exists(nf, 'chart' in nf)"
+    name:
+      from: metadata.name
+    fields:
+      # One switch, one port per chart NF, in source list order. OPI has
+      # no port graph; this is the chain implied by networkFunctions[].
+      - to: spec.template.spec.template.spec.switches
+        cel: "[{'ports': source.spec.networkFunctions.filter(nf, 'chart' in nf).map(nf, {'serviceInterface': {'matchLabels': {'service': nf.name}}})}]"
+
+# Mirror child readiness back onto the ServiceFunctionChain.
 #
-# NOTE: the current ServiceFunctionChain CRD (dpu-operator) declares an empty
-# status object, so the apiserver prunes everything written here -- this mirror
-# is a no-op until that CRD gains a status schema with conditions[]. The rule
-# is kept so mirroring activates automatically once the upstream schema lands;
-# the conformance suite asserts GC/owner-refs for this source, not status.
+# Single-writer status model: this condition is DPFReady, not Ready. Ready on
+# OPI sources belongs to the per-node dpu-operator daemon; the translation
+# controller owns only its own vendor-scoped condition. See the longer note in
+# dataprocessingunit.yaml.
+#
+# status.conditions is on the pinned OPI fixture (and the lab CRD after the
+# 2026-10-23 align). Ready stays reserved for the daemon. No
+# x-kubernetes-preserve-unknown-fields on status — extra keys are rejected.
 status:
+  schema: conditions
   conditions:
-    - type: Ready
+    - type: DPFReady
       status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).size() == 0 || c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True'))"
       reason: AllServicesReady
-      message: "All translated DPUServices report Ready"
+      message: "All translated DPUServices, interfaces, and the chain report Ready"

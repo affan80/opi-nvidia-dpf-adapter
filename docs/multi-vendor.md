@@ -25,7 +25,7 @@ No file in the workspace declares an API group matching `*.amd.*`,
 
 What *is* present is hardware, not schema:
 
-- `lab/hardware/dh1/README.md` — a real **AMD Pensando DSC2-100**: PCI vendor
+- the private lab hardware notes — a real **AMD Pensando DSC2-100**: PCI vendor
   `0x1dd8`, `ionic` driver, VPD product `Pensando DSC2-100 100G 2p QSFP56 DPU`,
   serial `DSCEXAMPLE0001`, firmware `1.46.0-E-28`, management function at
   `0000:1b:00.0`. Every literal in the AMD mapping and its sample comes from here.
@@ -78,8 +78,8 @@ provisional. Swapping in real CRDs should change `amd-dsc200.yaml` and the
 
 ### Harvest result, dh1, 2026-09-17
 
-Ran `hack/fetch-amd-crds.sh` against dh1 (lab-host.invalid). **There are no AMD CRDs to
-fetch, because there is no Kubernetes on dh1 and no AMD software of any kind.**
+Ran `hack/fetch-amd-crds.sh` against dh1. **There are no AMD CRDs to fetch,
+because there is no Kubernetes on dh1 and no AMD software of any kind.**
 
 | Checked | Found |
 |---|---|
@@ -91,17 +91,18 @@ fetch, because there is no Kubernetes on dh1 and no AMD software of any kind.**
 | `/etc/pensando`, `/opt/pensando` | absent |
 | dpkg packages matching pensando/dsc/ionic/psm | none (only `amd64-microcode`, a CPU package) |
 | helm releases | helm not installed |
-| DSC management IP lab-mgmt.invalid | unreachable, :22/:443/:8888 all closed |
+| DSC card management endpoint | unreachable; no management service answering |
 
 `/root/.bash_history` shows the host has only ever been bootstrapped — `apt
 update`, `passwd`, `sshd_config`, `lspci`. No operator has ever been installed.
 
 The **hardware** is real and matches the lab docs exactly: Dell PowerEdge R650,
-Pensando DSC2 Elba, PCI vendor `0x1dd8` device `0x1002`, serial
-`DSCEXAMPLE0001`, firmware `1.46.0-E-28`, two `ionic`-bound data functions. Note
+Pensando DSC2 Elba, PCI vendor `0x1dd8` device `0x1002`, firmware
+`1.46.0-E-28`, two `ionic`-bound data functions. Note
 the host has been renamed from `dh1` to **`opi`**, and the management function
 `1b:00.0` is **not bound to any driver** — it still needs the manual
-`echo "1dd8 1004" > /sys/bus/pci/drivers/ionic/new_id` from `lab/hardware/dh1/README.md`.
+`echo "1dd8 1004" > /sys/bus/pci/drivers/ionic/new_id` from the (private) lab
+hardware notes.
 
 **The stubs in `test/conformance/crds/amd/` therefore remain stubs.** They were
 not replaced, because there is nothing real to replace them with. Getting real
@@ -141,12 +142,13 @@ not covered by the "a vendor port is pure data" claim.
 
 ### Operational note: SSH to the lab
 
-The lab VPN has a path-MTU blackhole below its 1399 MTU. The default
-post-quantum KEX reply is large enough to be dropped, so `ssh` hangs at
-`SSH2_MSG_KEX_ECDH_REPLY` with no error. Add to `~/.ssh/config`:
+A VPN with a path-MTU blackhole below its MTU will drop the default
+post-quantum KEX reply, which is large enough to exceed it -- `ssh` then hangs
+at `SSH2_MSG_KEX_ECDH_REPLY` with no error. Pinning a small KEX fixes it; add
+to `~/.ssh/config`, scoped to your own lab hosts:
 
 ```
-Host lab-subnet.* dh?
+Host <your-lab-hosts>
     KexAlgorithms curve25519-sha256
 ```
 
@@ -195,37 +197,96 @@ incumbent for existing CRs that predate this field being load-bearing.
 change worth making, and deliberately **not** made here so this vendor port
 stays pure data.
 
-## 3. Known limitation: condition ownership
+## 3. Condition ownership: the single-writer model
 
-The controller upserts `status.conditions` **by type**. Two mappings on one
-source must not both write `Ready`, or each would overwrite the other every
-reconcile. So `amd-dsc200.yaml` mirrors `DSCReady` instead.
+The controller upserts `status.conditions` **by type**, so condition ownership
+has to be settled rather than assumed. Two writers on one condition type
+overwrite each other every reconcile.
 
-That avoids the write loop but leaves a real reporting defect. A healthy AMD card
-reconciled by both mappings ends up with:
+There are two writers in play on an OPI source, and only one of them is ours:
+
+| Writer | Condition | Object | Schema |
+| --- | --- | --- | --- |
+| VSP/OPI daemon (per node) | `Ready` | DataProcessingUnit, DpuOperatorConfig | `conditions` |
+| mapping:dataprocessingunit | `DPFReady` | DataProcessingUnit | `conditions` |
+| mapping:amd-dsc200 | `DSCReady` | DataProcessingUnit | `conditions` |
+| mapping:servicefunctionchain | `DPFReady` | ServiceFunctionChain | `pruned` (empty status object; no Status().Update) |
+| lifecycle | `VendorOperatorSupported` | DpuOperatorConfig | `conditions` |
+
+Machine-readable copy: `config/condition-writers.yaml`. Two writers on one
+(object, type) fail `LoadConditionWriterTable`.
+
+Both reach for `plugin.ReadyConditionType` (`= "Ready"`), and the daemon's writer
+is not a one-shot: it re-evaluates on every ping cycle, so a second writer does
+not merely race it once.
+
+So **`Ready` is reserved**: no mapping document may write it. Each mapping owns
+exactly one vendor-scoped condition instead — `dataprocessingunit.yaml` mirrors
+`DPFReady`, `amd-dsc200.yaml` mirrors `DSCReady`, and neither touches the
+daemon's.
+
+This is enforced, not documented-and-hoped-for. `Spec.Validate` rejects a
+`status.conditions[].type` of `Ready` (case-insensitively), so a mapping that
+breaks the model fails to load — the controller will not start with it and CI
+will not merge it. Two further guards back it up:
+
+- `pkg/mapping/status_owner_test.go` walks the shipped mapping set and asserts
+  that no two mappings on the same source kind claim the same condition type.
+- `test/conformance` asserts the *running* controller leaves `Ready` absent on
+  every source it reconciles — the document-level rule proven as behaviour, not
+  just as schema validation.
+
+### What this fixed
+
+Before the reserved type, both our mappings wrote `Ready`. Because a mapping's
+`status:` block has no `when` guard, the DPF mapping still evaluated its
+roll-up on an AMD card — over zero children — and a healthy DSC2-100 ended up
+carrying:
 
 ```
 type=Ready     status=False  reason=AllChildrenReady   # from the DPF mapping, which owns nothing here
 type=DSCReady  status=True   reason=AllChildrenReady   # from the AMD mapping
 ```
 
-`Ready=False` is stable (no hot loop), but the `DataProcessingUnit` CRD's printer
-column is `.status.conditions[?(@.type=='Ready')].status`, so **`kubectl get dpu`
-shows False for a working AMD card.**
+`Ready=False` was stable (no hot loop), but the `DataProcessingUnit` CRD's
+printer column is `.status.conditions[?(@.type=='Ready')].status`
+(`config.openshift.io_dataprocessingunits.yaml`), so `kubectl get dpu` showed
+**False for a working AMD card**. With `Ready` reserved to the daemon, that
+column now reports the daemon's real verdict, uncontested.
 
-The root cause is that `StatusMapping` has no way to say "this mapping does not
-own this source, write nothing". The fix is small and belongs in the engine:
+### The residual, now closed: `status.when`
+
+Reserving `Ready` stopped the two mappings fighting, but left a residual: an AMD
+card still picked up a `DPFReady=False` from a mapping that owned nothing on it,
+and vice versa. A mapping's `status:` block had no guard, so even with every
+`emit` filtered out it evaluated its readiness roll-up — over zero children —
+and wrote a False condition onto the other vendor's object. Objects isolated
+correctly while status did not.
+
+`StatusMapping.When` closes it. It is the counterpart to the per-emit `when`,
+and when it evaluates false the engine writes **nothing at all** — not a False
+condition, not a zero-valued status field:
 
 ```yaml
 status:
-  when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"   # skip mirroring when false
+  when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+  conditions:
+    - type: DSCReady
+      ...
 ```
 
-That is roughly ten lines across `pkg/mapping/spec.go` and `engine.go`, and it
-would let both vendors mirror the canonical `Ready`. It is *not* included here,
-because Phase 2's claim is that a vendor port needs no Go — and the honest
-version of that claim is "no Go, with this one caveat", not a silently patched
-engine. Track it as Phase 2.1.
+Both vendor mappings now carry it. `servicefunctionchain.yaml` deliberately does
+not: `ServiceFunctionChain` is not a vendor-specific kind, so there is nothing to
+gate on.
+
+This was originally deferred to keep the Phase 2 claim literal — that the vendor
+port needed no Go. That claim stands on its own record; the gate is a general
+engine feature every vendor benefits from, and leaving a known reporting defect
+in place to protect a talking point was the wrong trade.
+
+The conformance isolation spec now asserts both directions: neither card carries
+the other vendor's condition, **and** each still carries its own — because a gate
+that suppressed all mirroring would also pass the first assertion.
 
 ## 4. What the conformance suite proves
 
@@ -244,10 +305,53 @@ The suite now derives its scheme from whatever mappings are loaded
 (`gvksFromSpecs`), so a third vendor needs a mapping, its CRDs under
 `test/conformance/crds/`, and a case row — no other Go edit.
 
-## 5. The one per-vendor Go touch
+Two further dimensions the architecture review names were added later, in
+`test/conformance/dimensions_test.go`:
 
-`controller-gen` builds the ClusterRole from `+kubebuilder:rbac` comments in
-`pkg/translation/translation_controller.go`, so a mapping targeting a new API
-group needs that group listed there. It is a comment, not logic — but it is the
-one place a vendor port is not pure data. Generating RBAC from the mapping
-documents would close it.
+- **Detection handshake.** The per-node gRPC seam is how the daemon discovers a
+  vendor is present at all. It was covered by `pkg/vsp` unit tests but sat
+  outside the gate, so an adapter could pass conformance while failing the
+  handshake the daemon actually performs. Now run per vendor (NVIDIA, AMD,
+  Marvell) off the same enumerator abstraction the real VSP uses.
+- **Version-skew behaviour.** `pkg/lifecycle` pins a supported window per
+  vendor and publishes `VendorOperatorSupported` on `DpuOperatorConfig`. See
+  [docs/vendor-integration.md](vendor-integration.md) for the classification
+  table.
+
+  Asserting this against envtest rather than a fake client paid for itself
+  immediately: it showed the reporting was **unreachable on a real cluster**.
+  The LCM read the requested vendor from `spec.vendor`, which the upstream CRD
+  does not define, so the apiserver pruned it, `vendor` always resolved empty
+  and the reconcile returned before reporting any skew. A fake client keeps
+  whatever it is handed and would have shown green. The fix is an annotation
+  fallback, with `spec.vendor` keeping precedence for the day upstream adds it.
+
+## 5. The last per-vendor Go touch, now generated
+
+`controller-gen` builds the ClusterRole from `+kubebuilder:rbac` comments, so a
+mapping targeting a new API group needed that group listed by hand in
+`pkg/translation/translation_controller.go`. It was a comment rather than logic,
+but it was the one place a vendor port was not pure data — and the worst kind of
+omission, because a forgotten group surfaces only at runtime, as an apiserver
+`Forbidden` error, after translation otherwise looks correct.
+
+`hack/gen-rbac` now derives those markers from the mapping documents into
+`pkg/translation/zz_generated_rbac.go`. Every group, resource and verb is implied
+by the mapping: the source kind is read, status-updated and finalized; the
+emitted targets are fully managed. No judgement calls, which is why it belongs in
+a generator.
+
+The switch is verifiable rather than asserted: with the hand-written markers
+deleted and the generated ones in place, `config/rbac/role.yaml` regenerated
+**byte-identical**. The generator reproduces exactly what was there, including
+the `DSCNodePolicy` → `dscnodepolicies` pluralization a naive `+ "s"` gets wrong.
+
+- `make generate-rbac` regenerates; `make manifests` depends on it
+- `make verify-rbac` fails if a mapping changed without regenerating, and runs
+  as part of `make lint`
+- a test synthesises a vendor the repo has never seen and asserts its group
+  appears, which is the property being claimed
+
+So onboarding is now four touchpoints, three of them data and the fourth
+test-only — see [docs/vendor-integration.md](vendor-integration.md), the full
+checklist this AMD port was the dry run for.

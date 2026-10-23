@@ -4,6 +4,30 @@ The TSC mandate for this companion repo is that **OPI→DPF field mapping is dat
 
 This file is the schema. The interpreter lives in `pkg/mapping`. Concrete documents live in `config/mappings/`.
 
+
+## Machine-readable schema
+
+`config/mappings/fieldmapping.schema.json` is this document in JSON Schema form
+(draft 2020-12). Every shipped mapping carries a modeline, so editors with
+`yaml-language-server` give completion and inline errors:
+
+```yaml
+# yaml-language-server: $schema=./fieldmapping.schema.json
+```
+
+The schema encodes the rules, not just the field names: `exactly one of
+from/cel/value` as a `oneOf`, and the reserved `Ready` condition type as a `not`
+pattern — so an editor rejects it before the controller refuses to start.
+
+It is hand-written, which means it could drift from the Go structs the engine
+actually uses. `pkg/mapping/schema_test.go` reflects over the struct json tags
+and fails if either side has a field the other does not, so a schema that
+reported a valid field as an error could not merge.
+
+This file is also the artifact the architecture review's Phase 1 asks for when
+it says to ratify the mapping-spec format as an OPI subproject: a contract that
+can be versioned and depended on, rather than prose plus a Go package.
+
 ## Document shape
 
 ```yaml
@@ -64,7 +88,9 @@ Defaults (`value: true` on `spec.nodeEffect.noEffect`) are how the adapter fills
 
 A single OPI `DataProcessingUnit` cannot become a single DPF `DPU`. `dpuDeviceName`, `dpuFlavor`, and `bfb` are required references. The mapping file therefore has four `emit` entries. Adding a fifth DPF object is another YAML block, not another reconciler.
 
-`forEach` is the same idea for lists: one `ServiceFunctionChain` emits one `DPUService` per `networkFunctions[]` entry that has a chart.
+`forEach` is the same idea for lists: one `ServiceFunctionChain` emits one
+`DPUService` and one `DPUServiceInterface` per chart `networkFunctions[]`
+entry, plus a single `DPUServiceChain`. It does not emit `DPUDeployment`.
 
 ## What the Go code is allowed to do
 
@@ -110,11 +136,23 @@ status:
     - to: status.serviceCount
       cel: "children.size()"
   conditions:                      # upserted onto status.conditions by type
-    - type: Ready
+    - type: DPFReady               # NOT "Ready" -- see the reserved type below
       status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True'))"
       reason: AllServicesReady
       message: "All translated DPUServices report Ready"
 ```
+
+`status.when` gates the whole block: when it is present and evaluates false,
+nothing is mirrored at all — no conditions, no fields. Set it to the same guard
+your `emit` rules use, or a mapping that emits nothing for a card will still
+write a `False` condition onto it.
+
+`status.schema` is `conditions` or `pruned`. `conditions` means the source CRD
+keeps `status.conditions` (DataProcessingUnit). `pruned` means the CRD status
+is an empty object (ServiceFunctionChain today); the controller skips
+`Status().Update` so the apiserver does not silently drop `DPFReady`.
+`config/condition-writers.yaml` is the assigned-writer table: one row per
+(object, type), `Ready` always `vsp-opi-daemon`.
 
 Each `conditions[]` entry's `status` is a CEL expression that must evaluate to
 bool; `type`, `reason`, and `message` are literals. Write null-safe CEL
@@ -123,15 +161,35 @@ error the roll-up. The controller upserts conditions by `type`, preserving
 `lastTransitionTime` while a condition's status is unchanged and stamping a
 fresh time when it flips.
 
+Note the asymmetry in the example above: the condition this mapping *writes* is
+`DPFReady`, while the CEL *reads* `cond.type == 'Ready'` on the children. That
+is deliberate — the children are DPF's own objects publishing their own `Ready`,
+which is exactly what the roll-up should consult.
+
+### Reserved condition type: `Ready`
+
+A mapping document **may not** write a condition of type `Ready`. On an OPI
+source that condition belongs to the per-node dpu-operator daemon
+(`plugin.ReadyConditionType`); since the controller upserts by `type`, a mapping
+writing it would fight the daemon and flap the condition on every reconcile.
+
+`Spec.Validate` rejects it case-insensitively, so such a document fails to load
+and the controller will not start. Own a vendor-scoped condition instead
+(`DPFReady`, `DSCReady`). The constant is `mapping.ReservedConditionType`, and
+`docs/multi-vendor.md` §3 explains the single-writer model in full.
+
 ## Multiple vendors on one source kind
 
 Two mapping documents may declare the same `source`. `cmd/main.go` then starts
 one controller per mapping and both reconcile every object of that kind, so each
 `emit` needs a `when` guard that claims only its own hardware, and each mapping
-must mirror a **distinct** condition type — the controller upserts conditions by
-`type`, so a shared `Ready` would have the two mappings overwrite each other
-every reconcile.
+must mirror a **distinct**, vendor-scoped condition type — neither sharing one
+with each other, nor taking the daemon's reserved `Ready`.
+
+To start a new vendor from a working, CI-tested skeleton rather than from this
+reference, run `make new-vendor` and read
+[docs/vendor-integration.md](vendor-integration.md).
 
 `config/mappings/amd-dsc200.yaml` is the worked example, and
-[docs/multi-vendor.md](multi-vendor.md) covers the routing, the condition-
-ownership limitation it exposes, and what is still needed from the lab hosts.
+[docs/multi-vendor.md](multi-vendor.md) covers the routing, the single-writer
+status model, and what is still needed from the lab hosts.

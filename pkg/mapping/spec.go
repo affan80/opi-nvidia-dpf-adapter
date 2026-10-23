@@ -29,6 +29,21 @@ const APIVersion = "translation.opi.nvidia.com/v1alpha1"
 // Kind is the mapping-spec kind.
 const Kind = "FieldMapping"
 
+// ReservedConditionType is the condition type a mapping document may not write.
+//
+// Single-writer status model: on an OPI source object, Ready is owned by the
+// per-node dpu-operator daemon. Upstream seeds it on the DataProcessingUnit at
+// creation (internal/platform/vendordetector.go, Ready=False/Initializing) and
+// then keeps it current from plugin-init plus VSP ping
+// (internal/daemon/daemon.go), all via plugin.ReadyConditionType.
+//
+// The translation controller upserts conditions by type, so a mapping that also
+// wrote Ready would fight the daemon and flap the condition every reconcile.
+// Each mapping therefore owns its own vendor-scoped condition instead --
+// DPFReady for NVIDIA, DSCReady for AMD. Validate rejects the reserved type at
+// load time, so a mapping that breaks the model cannot merge or start.
+const ReservedConditionType = "Ready"
+
 // Spec is a data-driven OPI→DPF translation document. The controller
 // interprets this file; it does not contain Go switch statements on Kind.
 type Spec struct {
@@ -134,12 +149,34 @@ func nonEmpty(s string) any {
 // source (the OPI object) and children (the list of emitted child objects,
 // each an unstructured map located by the translation labels).
 type StatusMapping struct {
+	// When gates the whole status block: a CEL expression that must evaluate
+	// to bool. When it is false, nothing is mirrored and the source's status is
+	// left untouched.
+	//
+	// This is the counterpart to the per-emit `when` guard. Without it, a
+	// mapping that emits nothing for a given card still evaluates its readiness
+	// roll-up over zero children and parks a False condition on hardware it
+	// owns nothing of. Set it to the same vendor guard the emits use.
+	When string `json:"when,omitempty" yaml:"when,omitempty"`
+	// Schema says whether the source CRD keeps status.conditions.
+	// "conditions": the apiserver stores the write (DataProcessingUnit).
+	// "pruned": the CRD status is an empty object;
+	// the controller skips Status().Update until upstream adds conditions.
+	Schema string `json:"schema,omitempty" yaml:"schema,omitempty"`
 	// Fields write computed values onto the source, addressed by dotted path
 	// rooted at the object (e.g. status.observedServices).
 	Fields []Field `json:"fields,omitempty" yaml:"fields,omitempty"`
 	// Conditions are metav1-style conditions upserted onto status.conditions.
 	Conditions []StatusCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 }
+
+const (
+	// StatusSchemaConditions means the source CRD declares status.conditions.
+	StatusSchemaConditions = "conditions"
+	// StatusSchemaPruned means the source CRD status object has no properties,
+	// so a condition write is dropped by the apiserver.
+	StatusSchemaPruned = "pruned"
+)
 
 // StatusCondition is one mirrored condition. Status is a CEL expression that
 // must evaluate to bool; Type/Reason/Message are literals.
@@ -205,6 +242,24 @@ func (s *Spec) Validate() error {
 			}
 			if strings.TrimSpace(c.Status) == "" {
 				return fmt.Errorf("status.conditions[%d].status (CEL) is required", i)
+			}
+			// Single-writer status model; see ReservedConditionType.
+			if strings.EqualFold(strings.TrimSpace(c.Type), ReservedConditionType) {
+				return fmt.Errorf("status.conditions[%d].type must not be %q: that condition "+
+					"is owned by the dpu-operator daemon; use a vendor-scoped type "+
+					"(e.g. DPFReady, DSCReady)", i, ReservedConditionType)
+			}
+		}
+		if len(s.Status.Conditions) > 0 {
+			switch s.Status.Schema {
+			case StatusSchemaConditions, StatusSchemaPruned:
+			case "":
+				return fmt.Errorf(
+					"status.schema is required when status.conditions is set: %q (CRD keeps the write) or %q (CRD would prune it)",
+					StatusSchemaConditions, StatusSchemaPruned)
+			default:
+				return fmt.Errorf("status.schema %q is not %q or %q",
+					s.Status.Schema, StatusSchemaConditions, StatusSchemaPruned)
 			}
 		}
 	}

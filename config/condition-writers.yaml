@@ -1,0 +1,53 @@
+# Condition writer table. One writer per (object GVK, condition type).
+# Two rows with the same GVK+type is a status collision and a failed test.
+#
+# schema: conditions — the source CRD keeps status.conditions, so the write
+# lands. schema: pruned — skip Status().Update when a CRD status is empty.
+#
+# Ready is owned by the VSP/OPI per-node daemon on every OPI object that
+# declares it. The translator never writes Ready.
+apiVersion: translation.opi.nvidia.com/v1alpha1
+kind: ConditionWriterTable
+writers:
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DataProcessingUnit
+    type: Ready
+    writer: vsp-opi-daemon
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DataProcessingUnit
+    type: DPFReady
+    writer: mapping:dataprocessingunit
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DataProcessingUnit
+    type: DSCReady
+    writer: mapping:amd-dsc200
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: ServiceFunctionChain
+    type: DPFReady
+    writer: mapping:servicefunctionchain
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DpuOperatorConfig
+    type: Ready
+    writer: vsp-opi-daemon
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DpuOperatorConfig
+    type: VendorOperatorSupported
+    writer: lifecycle
+    schema: conditions

@@ -250,9 +250,12 @@ func statusSpec() *Spec {
 			Fields: []Field{{To: "spec.paused", Value: false}},
 		}},
 		Status: &StatusMapping{
+			Schema: StatusSchemaConditions,
 			Fields: []Field{{To: "status.observedServices", CEL: "children.size()"}},
 			Conditions: []StatusCondition{{
-				Type:    "Ready",
+				// Vendor-scoped, not "Ready": Validate reserves that type for
+				// the dpu-operator daemon. See ReservedConditionType.
+				Type:    "DPFReady",
 				Status:  "children.size() > 0 && children.all(c, c.status.ready == true)",
 				Reason:  "AllReady",
 				Message: "all children ready",
@@ -279,7 +282,7 @@ func TestApplyStatusAllReady(t *testing.T) {
 		t.Fatalf("conditions=%v", st["conditions"])
 	}
 	c0 := conds[0].(map[string]any)
-	if c0["type"] != "Ready" || c0["status"] != "True" || c0["reason"] != "AllReady" {
+	if c0["type"] != "DPFReady" || c0["status"] != "True" || c0["reason"] != "AllReady" {
 		t.Errorf("condition=%v", c0)
 	}
 }
@@ -337,5 +340,195 @@ func TestDefaultsNamespaceAndNameDefault(t *testing.T) {
 	}
 	if objs[0].GetNamespace() != "dpf-operator-system" {
 		t.Errorf("namespace=%s, want dpf-operator-system (spec default)", objs[0].GetNamespace())
+	}
+}
+
+// statusGatedSpec is statusSpec with an ownership gate on the status block.
+func statusGatedSpec(when string) *Spec {
+	s := statusSpec()
+	s.Status.When = when
+	return s
+}
+
+// TestApplyStatusOwnershipGate covers the status.when gate. The gate exists to
+// stop a mapping reporting on a source it does not own: before it, a mapping
+// whose emits were all guarded off still evaluated its roll-up over zero
+// children and produced a False condition.
+func TestApplyStatusOwnershipGate(t *testing.T) {
+	src := object(map[string]any{"name": "chain-1"}, map[string]any{})
+
+	t.Run("gate true mirrors as normal", func(t *testing.T) {
+		st, err := ApplyStatus(statusGatedSpec("true"), src, []any{child(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st == nil {
+			t.Fatal("status is nil although the gate passed")
+		}
+		conds, ok := st["conditions"].([]any)
+		if !ok || len(conds) != 1 {
+			t.Fatalf("conditions=%v", st["conditions"])
+		}
+	})
+
+	t.Run("gate false writes nothing at all", func(t *testing.T) {
+		// Children are ready, so without the gate this would mirror True.
+		st, err := ApplyStatus(statusGatedSpec("false"), src, []any{child(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st != nil {
+			t.Errorf("status = %#v, want nil: a gated-off mapping must write nothing", st)
+		}
+	})
+
+	t.Run("gate false suppresses fields too, not just conditions", func(t *testing.T) {
+		// status.observedServices is a field, not a condition. A gate that only
+		// skipped conditions would still stamp a count on someone else's object.
+		st, err := ApplyStatus(statusGatedSpec("false"), src, []any{child(true), child(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st != nil {
+			t.Errorf("status = %#v, want nil", st)
+		}
+	})
+
+	t.Run("empty gate means ungated", func(t *testing.T) {
+		st, err := ApplyStatus(statusGatedSpec(""), src, []any{child(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st == nil {
+			t.Fatal("an empty when must not gate the block off")
+		}
+	})
+
+	t.Run("a non-bool gate is an error, not a silent skip", func(t *testing.T) {
+		_, err := ApplyStatus(statusGatedSpec("'yes'"), src, []any{child(true)})
+		if err == nil {
+			t.Fatal("want an error for a gate that is not boolean")
+		}
+	})
+
+	t.Run("gate can read the source", func(t *testing.T) {
+		gated := statusGatedSpec("source.metadata.name == 'chain-1'")
+		st, err := ApplyStatus(gated, src, []any{child(true)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st == nil {
+			t.Fatal("gate reading source.metadata.name did not pass")
+		}
+	})
+}
+
+// TestShippedVendorMappingsGateTheirStatus is the regression guard on the real
+// defect: a vendor mapping that emits nothing for a card must also mirror
+// nothing onto it. Checked against both shipped vendor mappings, driven by the
+// product strings the other vendor's hardware actually reports.
+func TestShippedVendorMappingsGateTheirStatus(t *testing.T) {
+	specs, err := LoadDir(mappingDir)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	byName := map[string]*Spec{}
+	for _, s := range specs {
+		byName[s.Metadata.Name] = s
+	}
+
+	// The product string each vendor's card reports, as the conformance suite
+	// and docs/multi-vendor.md record them.
+	const (
+		bluefield = "BlueField-3"
+		pensando  = "Pensando DSC2-100 100G 2p QSFP56 DPU"
+	)
+
+	for _, tc := range []struct {
+		mapping, foreignProduct string
+	}{
+		{"dataprocessingunit", pensando},
+		{"amd-dsc200", bluefield},
+	} {
+		t.Run(tc.mapping, func(t *testing.T) {
+			spec, ok := byName[tc.mapping]
+			if !ok {
+				t.Skipf("mapping %q not shipped", tc.mapping)
+			}
+			if spec.Status == nil {
+				t.Skip("mapping mirrors no status")
+			}
+			if spec.Status.When == "" {
+				t.Fatalf("mapping %q mirrors status with no ownership gate; it will "+
+					"report on other vendors' cards", tc.mapping)
+			}
+
+			src := map[string]any{
+				"metadata": map[string]any{"name": "foreign-card", "namespace": "opi"},
+				"spec": map[string]any{
+					"dpuProductName": tc.foreignProduct,
+					"nodeName":       "worker-1",
+				},
+			}
+
+			// Emits must produce nothing for a foreign card...
+			objs, err := Apply(spec, src)
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if len(objs) != 0 {
+				t.Errorf("emitted %d object(s) for a %q card", len(objs), tc.foreignProduct)
+			}
+
+			// ...and the status block must stay silent about it.
+			st, err := ApplyStatus(spec, src, nil)
+			if err != nil {
+				t.Fatalf("ApplyStatus: %v", err)
+			}
+			if st != nil {
+				t.Errorf("mapping %q wrote status %#v onto a %q card it does not own",
+					tc.mapping, st, tc.foreignProduct)
+			}
+		})
+	}
+}
+
+// TestAMDMappingRequiresSerial is the fake-device guard: a Pensando product
+// name without a board serial must not emit DSC* objects or write DSCReady.
+func TestAMDMappingRequiresSerial(t *testing.T) {
+	specs, err := LoadDir(mappingDir)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	var spec *Spec
+	for _, s := range specs {
+		if s.Metadata.Name == "amd-dsc200" {
+			spec = s
+			break
+		}
+	}
+	if spec == nil {
+		t.Fatal("amd-dsc200 mapping not shipped")
+	}
+	src := map[string]any{
+		"metadata": map[string]any{"name": "no-serial", "namespace": "opi"},
+		"spec": map[string]any{
+			"dpuProductName": "Pensando DSC2-100 100G 2p QSFP56 DPU",
+			"nodeName":       "dh2",
+		},
+	}
+	objs, err := Apply(spec, src)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(objs) != 0 {
+		t.Errorf("emitted %d AMD object(s) without a serial; that is a fake device", len(objs))
+	}
+	st, err := ApplyStatus(spec, src, nil)
+	if err != nil {
+		t.Fatalf("ApplyStatus: %v", err)
+	}
+	if st != nil {
+		t.Errorf("wrote status %#v onto a card with no serial", st)
 	}
 }

@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -36,6 +38,10 @@ import (
 )
 
 const fieldOwner = "opi-nvidia-dpf-adapter"
+const (
+	statusKey = "status"
+	typeKey   = "type"
+)
 
 // annSource records provenance when Kubernetes GC cannot follow an owner
 // reference (namespaced owner of a cluster-scoped or cross-namespace child).
@@ -61,23 +67,16 @@ type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Spec   *mapping.Spec
+
+	schemaMu sync.Mutex
+	schemas  map[schema.GroupVersionKind]map[string]any
 }
 
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dataprocessingunits,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dataprocessingunits/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dataprocessingunits/finalizers,verbs=update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=servicefunctionchains,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=config.openshift.io,resources=servicefunctionchains/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=config.openshift.io,resources=servicefunctionchains/finalizers,verbs=update
-// +kubebuilder:rbac:groups=provisioning.dpu.nvidia.com,resources=dpus;dpudevices;dpuflavors;bfbs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=svc.dpu.nvidia.com,resources=dpuservices,verbs=get;list;watch;create;update;patch;delete
-//
-// Second vendor (config/mappings/amd-dsc200.yaml). Only the RBAC marker is
-// per-vendor: controller-gen sources the ClusterRole from these comments, so a
-// mapping that targets a new API group needs its group listed here even though
-// no Go logic changes. Generating RBAC from the mapping documents instead would
-// make a vendor port entirely data -- see docs/multi-vendor.md.
-// +kubebuilder:rbac:groups=dpu.amd.com,resources=dscdevices;dscprofiles;dscfirmwares;dscnodepolicies,verbs=get;list;watch;create;update;patch;delete
+// RBAC for the mapped kinds is NOT declared here. It is generated into
+// zz_generated_rbac.go from config/mappings by hack/gen-rbac, so onboarding a
+// vendor needs no Go edit at all. These markers were previously the one place a
+// vendor port was not pure data; `make generate-rbac` replaces that step, and
+// `make verify-rbac` fails the build if a mapping changed without it.
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx).WithValues("mapping", r.Spec.Metadata.Name)
@@ -168,13 +167,35 @@ func (r *Reconciler) cleanupAnnotatedChildren(ctx context.Context, src *unstruct
 
 func (r *Reconciler) applyOne(ctx context.Context, src, obj *unstructured.Unstructured) error {
 	stampOwner(src, obj, r.Scheme)
+	log := logf.FromContext(ctx)
 
-	obj.SetManagedFields(nil)
-	return r.Apply(ctx,
-		client.ApplyConfigurationFromUnstructured(obj),
-		client.ForceOwnership,
-		client.FieldOwner(fieldOwner),
-	)
+	if crdSchema, err := r.liveCRDSchema(ctx, obj.GroupVersionKind()); err == nil && crdSchema != nil {
+		for _, path := range pruneUnknownSpec(obj, crdSchema) {
+			log.Info("omitted field not on live CRD schema",
+				"kind", obj.GetKind(), "name", obj.GetName(), "field", path)
+		}
+	}
+
+	// Safety net: if the live OpenAPI still rejects a field (stale cache,
+	// CRD get forbidden), drop that path and retry.
+	for range 8 {
+		obj.SetManagedFields(nil)
+		err := r.Apply(ctx,
+			client.ApplyConfigurationFromUnstructured(obj),
+			client.ForceOwnership,
+			client.FieldOwner(fieldOwner),
+		)
+		if err == nil {
+			return nil
+		}
+		path, dropErr := omitLiveUnknownFields(obj, err)
+		if dropErr != nil {
+			return dropErr
+		}
+		log.Info("omitted field not declared in live CRD",
+			"kind", obj.GetKind(), "name", obj.GetName(), "field", path)
+	}
+	return fmt.Errorf("apply %s/%s: too many live-unknown fields", obj.GetKind(), obj.GetName())
 }
 
 // mirrorStatus rolls the status of emitted children back onto the OPI source,
@@ -182,6 +203,12 @@ func (r *Reconciler) applyOne(ctx context.Context, src, obj *unstructured.Unstru
 // declares no status rules or when the computed status matches what is stored.
 func (r *Reconciler) mirrorStatus(ctx context.Context, src *unstructured.Unstructured) error {
 	if r.Spec.Status == nil {
+		return nil
+	}
+	// When the source CRD status object has no conditions[], a write is
+	// pruned by the apiserver. Skip the update so we do not pretend DPFReady
+	// landed. Flip status.schema to "conditions" when upstream adds the field.
+	if r.Spec.Status.Schema == mapping.StatusSchemaPruned {
 		return nil
 	}
 	objs, err := r.listChildObjects(ctx, src)
@@ -244,7 +271,7 @@ func (r *Reconciler) listChildObjects(
 // upserting conditions by type and preserving lastTransitionTime when a
 // condition's status is unchanged. Returns whether anything changed.
 func applyStatus(src *unstructured.Unstructured, desired map[string]any) bool {
-	cur, _, _ := unstructured.NestedMap(src.Object, "status")
+	cur, _, _ := unstructured.NestedMap(src.Object, statusKey)
 	if cur == nil {
 		cur = map[string]any{}
 	}
@@ -267,7 +294,7 @@ func applyStatus(src *unstructured.Unstructured, desired map[string]any) bool {
 		}
 	}
 	if changed {
-		_ = unstructured.SetNestedMap(src.Object, cur, "status")
+		_ = unstructured.SetNestedMap(src.Object, cur, statusKey)
 	}
 	return changed
 }
@@ -284,7 +311,7 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		if !ok {
 			continue
 		}
-		t, _ := m["type"].(string)
+		t, _ := m[typeKey].(string)
 		byType[t] = m
 		order = append(order, t)
 	}
@@ -296,8 +323,13 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		if !ok {
 			continue
 		}
-		t, _ := dm["type"].(string)
-		next := map[string]any{"type": t, "status": dm["status"]}
+		t, _ := dm[typeKey].(string)
+		if strings.EqualFold(t, mapping.ReservedConditionType) {
+			// VSP/OPI daemon owns Ready. Never upsert it even if a mapping
+			// slipped past Validate.
+			continue
+		}
+		next := map[string]any{typeKey: t, statusKey: dm[statusKey]}
 		if v, ok := dm["reason"]; ok {
 			next["reason"] = v
 		}
@@ -306,7 +338,7 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		}
 
 		prev, existed := byType[t]
-		if existed && prev["status"] == dm["status"] {
+		if existed && prev[statusKey] == dm[statusKey] {
 			if ltt, ok := prev["lastTransitionTime"]; ok {
 				next["lastTransitionTime"] = ltt
 			}

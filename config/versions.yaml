@@ -1,0 +1,49 @@
+# Pinned APIs this adapter is tested against.
+#
+# Update this file, pkg/lifecycle/version.go, and the vendored CRDs under
+# test/e2e/crds/ in the same change. The window is a claim about the fixtures
+# the mapping fields were compared to, not an aspiration.
+#
+# Compared on 2026-10-22 against the live cluster on lab host dh2 before
+# this pin was written. See docs/api-versions.md.
+
+kubernetes:
+  # k3s on dh2. Go modules track the same minor.
+  version: v1.36.4
+  distribution: k3s
+  goModule: v0.36.0
+
+opi:
+  group: config.openshift.io
+  version: v1
+  # Chart fields are not on opiproject/dpu-operator main. They live on
+  # unmerged PR #6. Do not silently treat them as upstream-stable.
+  repository: github.com/kartikeyg0104/dpu-operator
+  upstream: github.com/opiproject/dpu-operator
+  pullRequest: https://github.com/opiproject/dpu-operator/pull/6
+  patchState: unmerged
+  ref: feat/sfc-helm-chart
+  commit: c107ef719f74d4f841ceb1ed45bbd293b3739a3c
+  fixtures: test/e2e/crds/opi
+  kinds:
+    - DataProcessingUnit
+    - ServiceFunctionChain
+    - DpuOperatorConfig
+
+dpf:
+  release: v26.4.0
+  repository: github.com/NVIDIA/doca-platform
+  # Local checkout whose provisioning CRDs contain astraEnabled (v26.4 line).
+  commit: 6160eaba2dadaf3a91bd35ad649935985b69a9c5
+  fixtures: test/e2e/crds/dpf
+  supportWindow:
+    minInclusive: v26.4.0
+    maxExclusive: v27.0.0
+  mappedKinds:
+    - DPUDevice
+    - DPUFlavor
+    - BFB
+    - DPU
+    - DPUService
+    - DPUServiceInterface
+    - DPUServiceChain

@@ -40,8 +40,13 @@ spec:
                 description: Firmware image coordinates. Nested, unlike BFB.spec.url.
                 properties:
                   url:
+                    description: Firmware download URL. https only — file/http/data schemes are rejected.
+                    maxLength: 2048
+                    minLength: 8
+                    pattern: ^https://
                     type: string
                   version:
+                    maxLength: 64
                     type: string
                 required:
                 - url

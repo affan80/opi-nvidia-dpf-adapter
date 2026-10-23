@@ -43,8 +43,20 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: generate-rbac
+generate-rbac: ## Generate the translation controller's RBAC markers from config/mappings.
+	go run ./hack/gen-rbac
+
+.PHONY: verify-rbac
+verify-rbac: ## Fail if the generated RBAC markers are stale.
+	go run ./hack/gen-rbac -check
+
+.PHONY: verify-api
+verify-api: ## Fail if mappings write fields the pinned CRDs do not have.
+	go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run 'TestMappingFieldsExistInVendoredCRDs|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
+
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: generate-rbac controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
@@ -95,8 +107,21 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)
 
+.PHONY: new-vendor
+new-vendor: ## Scaffold a new vendor adapter. VENDOR= GROUP= MODEL= [PREFIX=]
+	@./hack/new-vendor.sh \
+		$(if $(VENDOR),VENDOR=$(VENDOR)) \
+		$(if $(GROUP),GROUP=$(GROUP)) \
+		$(if $(MODEL),MODEL=$(MODEL)) \
+		$(if $(PREFIX),PREFIX=$(PREFIX)) \
+		$(if $(OUT),OUT=$(OUT))
+
+.PHONY: check-no-lab-details
+check-no-lab-details: ## Fail if private lab details or real serials are tracked.
+	./hack/check-no-lab-details.sh
+
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
+lint: check-no-lab-details verify-rbac verify-api golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
 
 .PHONY: lint-fix

@@ -1,0 +1,239 @@
+# Vendor integration: onboarding a new DPU vendor
+
+This is the scaffold a new vendor team clones instead of re-deriving the
+architecture from the first two vendors' commit history.
+
+It exists because the architecture review asked for exactly that — *"promote the
+Vendor Integration Template from convention to scaffold"* — and because
+convention had already been tested and found wanting: the AMD port hit three
+shape mismatches and one broken vendor guard that nothing in the repo warned
+about. Those lessons are now baked into the template rather than written down
+and hoped for.
+
+## The four touchpoints
+
+Onboarding one vendor touches four things. Three are data; the only production
+Go is an optional table entry, and only if the VSP has to stamp serials.
+
+| # | What | Where | Data or Go |
+| --- | --- | --- | --- |
+| 1 | The field mapping | `config/mappings/<vendor>.yaml` | data |
+| 2 | The vendor's CRD schemas | `test/conformance/crds/<vendor>/` | data |
+| 3 | A conformance case row | `test/conformance/conformance_test.go` | Go (test only) |
+| 4 | PCI enumeration, *if* the VSP must stamp serials | `pkg/discovery/pci.go`, `types.go` | Go (a table entry) |
+
+**RBAC used to be on this list and no longer is.** `controller-gen` builds the
+ClusterRole from marker comments, so a new API group meant hand-editing a comment
+in `pkg/translation` — the one place a vendor port was not pure data, and a
+failure that surfaced only at runtime as an apiserver `Forbidden` error after
+everything else looked correct. `hack/gen-rbac` now derives those markers from
+the mapping documents themselves:
+
+```bash
+make manifests     # regenerates the markers, then the ClusterRole
+make verify-rbac   # fails if a mapping changed without regenerating
+```
+
+Nothing in that derivation is a judgement call — the source kind is read,
+status-updated and finalized; the emitted targets are fully managed — which is
+exactly why it belongs in a generator rather than in a reviewer's memory.
+`make verify-rbac` runs as part of `make lint`.
+
+There is no per-vendor controller, no `switch obj.GetKind()`, and no vendor
+package. The translation controller and the lifecycle manager are generic: they
+interpret the mapping documents. That is the property the second vendor was
+added to prove, and the conformance suite is what keeps it true.
+
+## Start here
+
+```bash
+make new-vendor VENDOR=acme GROUP=dpu.acme.com MODEL=A100 PREFIX=ACME
+```
+
+That writes `config/mappings/acme.yaml` from the template and creates
+`test/conformance/crds/acme/`, then prints the two steps it cannot do for you
+(items 3 and 4 above).
+
+The generated mapping is not a sketch — it loads, validates and translates.
+`pkg/mapping/vendor_template_test.go` runs the generator into a temp directory
+on every CI run and puts its output through the real loader and the real engine,
+so the scaffold cannot rot and the generator cannot silently stop substituting a
+token.
+
+## The four things that actually bite
+
+The template demonstrates each of these, because each one cost real time on the
+first vendor port.
+
+### 1. The vendor guard is the most important line in the file
+
+Every vendor watches the **same** OPI source kind — that is the point of OPI.
+Several mappings therefore reconcile every object of that kind, and each `emit`
+needs a `when` guard claiming only its own hardware. Without one, an AMD card
+sprouts NVIDIA CRs.
+
+Write the guard against what the card *reports*, not what the catalogue calls
+it:
+
+```yaml
+when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+```
+
+The AMD guard was originally `startsWith('DSC')` and returned false on real
+hardware, because the PCI VPD product name is
+`Pensando DSC2-100 100G 2p QSFP56 DPU`. Use `matches` with an alternation. The
+scaffold generates two alternatives for this reason, and a test fails if they
+collapse into the same word.
+
+### 2. Do not invent your own source CRD
+
+The single most common defect across the 28 reviewed submissions was a vendor
+replacing `DataProcessingUnit` / `ServiceFunctionChain` with its own CRDs. The
+user must keep authoring the OPI kinds; the vendor's CRDs stay invisible.
+
+Note also that `DataProcessingUnit` is **created by the operator**, not by the
+user — `DpuDetectorManager.DetectAll` seeds one per detected card. A mapping
+consumes it; nothing should expect a human to write one.
+
+### 3. Destination shapes will not match, and that is fine — it is data
+
+Expect all of these, and handle them in the mapping rather than in Go. The
+template shows one of each:
+
+| Mismatch | Example |
+| --- | --- |
+| flat source → nested target | `spec.url` → `spec.image.url` |
+| name string → object reference | `dpuDeviceName: foo` → `deviceRef.name: foo` |
+| inverted boolean | `nodeEffect.noEffect: true` → `drain.enabled: false` |
+| enum derived from a bool | `spec.isDpuSide` → `'dpu'` or `'smartnic'` |
+
+If a mismatch genuinely cannot be expressed, that is a finding about the mapping
+spec worth raising — not a reason to add vendor Go.
+
+### 4. `Ready` is reserved — own a vendor-scoped condition
+
+The per-node dpu-operator daemon owns `Ready` on the OPI source. The translation
+controller upserts conditions **by type**, so a mapping that also wrote `Ready`
+would fight the daemon and flap the condition on every reconcile — and `Ready`
+is the CRD's printer column, so losing that race displays a healthy card as not
+ready.
+
+Mirror `<PREFIX>Ready` instead. `Spec.Validate` rejects `Ready` outright, so a
+mapping that breaks this does not load and the controller will not start.
+`docs/multi-vendor.md` §3 has the full model.
+
+Write null-safe CEL in the roll-up (`.?field.orValue(...)`): a child that has
+not published status yet must not error it, and a child whose CRD has no status
+subresource exposes no conditions at all and should be non-blocking.
+
+**Gate the status block with the same guard your emits use:**
+
+```yaml
+status:
+  when: "source.spec.?dpuProductName.orValue('').matches('A100|ACME')"
+  conditions:
+    - type: ACMEReady
+      ...
+```
+
+Without `status.when`, a mapping whose emits are all guarded off *still*
+evaluates its readiness roll-up — over zero children — and parks a `False`
+condition on another vendor's card. Objects isolate correctly while status does
+not. The scaffold includes this gate; the conformance suite asserts neither
+vendor's card carries the other's condition.
+
+## What the conformance suite will hold you to
+
+Adding the case row in step 3 opts the vendor into the shared gate, which runs
+in CI via `make test`. It asserts, per vendor:
+
+- controller owner references on every emitted child, as a GC proxy
+- the exact translated field values (`wantFields`), including the nested and
+  inverted ones — this is what makes it a translation test rather than an
+  owner-ref test
+- the vendor-scoped condition mirrors `True` once status-capable children report
+  ready, and that `Ready` is **absent** on the source
+- cleanup on delete, including annotation-tracked cross-namespace children
+- multi-vendor isolation: with two vendors' sources in one cluster, each
+  produces its own object set and none of the other's
+- **the detection handshake**: the VSP answers `Init`, `GetDevices` on both the
+  dpu-api and OPI-API surfaces, and the network-function add/delete calls, and
+  shuts down cleanly — run per vendor off the same enumerator abstraction the
+  real VSP uses, so the seam is proven vendor-independent rather than
+  NVIDIA-shaped
+- **version-skew behaviour**: see below
+
+The suite derives its scheme from whatever mappings are loaded, so a third
+vendor needs a mapping, CRDs, and a case row — no other Go edit.
+
+## Version skew: pin your operator's supported window
+
+The adapter writes the vendor operator's CRs, which makes that operator's API a
+hard dependency. A release that renames a field or bumps a CRD version turns
+every translation into a silent no-op or an apply error, and the only symptom is
+objects that never become ready. That is an afternoon of debugging unless the
+adapter says so out loud.
+
+Compare the installed OPI CRDs to `test/e2e/crds/opi` and the mapping
+`to:` paths to the target vendor CRDs **before** pinning a release.
+`config/versions.yaml` is the pin; `make verify-api` is the drift gate.
+
+Then add the window that comparison actually passed against to
+`supportedVersions` in `pkg/lifecycle/version.go`:
+
+```go
+var supportedVersions = map[string]SupportedRange{
+    "nvidia": {MinInclusive: "v26.4.0", MaxExclusive: "v27.0.0"},
+}
+```
+
+The window is half-open, because the useful statement is "tested up to, but not
+including, the next major". The lifecycle manager classifies the installed
+version against it and publishes `VendorOperatorSupported` on
+`DpuOperatorConfig`:
+
+| Classification | Condition | Meaning |
+| --- | --- | --- |
+| `Supported` | `True` | inside the window |
+| `TooOld` | `False` | predates it; expect fields this adapter writes to be missing |
+| `TooNew` | `False` | postdates it; the CRD schema may have moved |
+| `Unknown` | `Unknown` | no version could be determined, or it did not parse |
+| `Unpinned` | `Unknown` | the vendor has no declared window — a vendor absent from the map |
+
+Only a definite mismatch is `False`. "Could not determine" and "no window
+pinned" are `Unknown`, because reporting those as failures trains operators to
+ignore the condition.
+
+Note the condition is `VendorOperatorSupported`, not `Ready` — the same
+single-writer rule as mappings. The daemon owns `Ready` on `DpuOperatorConfig`
+too, and it is that CRD's printer column.
+
+### How the vendor and version are declared
+
+Until upstream `DpuOperatorConfig` grows a `spec.vendor` field, both are
+annotations. That is the NVIDIA enablement contract. A versioned upstream
+schema change is not used: this adapter does not own the OPI CRD, and on a
+live cluster `spec.vendor` is a `BadRequest` (strict decoding, unknown field).
+
+```yaml
+# config/samples/dpuoperatorconfig-nvidia.yaml
+metadata:
+  name: dpu-operator-config
+  annotations:
+    lifecycle.opi.nvidia.com/vendor: nvidia
+    lifecycle.opi.nvidia.com/vendor-operator-version: v26.4.0
+spec:
+  logLevel: 2
+```
+
+`spec.vendor` still takes precedence if a future CRD accepts it. The LCM
+rejects unknown vendors (`VendorOperatorSupported=False`, reason
+`UnknownVendor`). Allowed values: `nvidia`, `amd`. The CRD cannot validate
+the annotation, so the controller does.
+
+## Further reading
+
+- `docs/mapping-spec.md` — the full field reference for the mapping document
+- `docs/multi-vendor.md` — the AMD port written up as a worked example, including
+  what the live hardware changed
+- `docs/vsp.md` — the per-node gRPC seam, and when a vendor needs to touch it

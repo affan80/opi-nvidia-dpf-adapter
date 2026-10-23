@@ -5,6 +5,13 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+- apiGroups:
   - config.openshift.io
   resources:
   - dataprocessingunits
@@ -26,6 +33,7 @@ rules:
   - config.openshift.io
   resources:
   - dataprocessingunits/status
+  - dpuoperatorconfigs/status
   - servicefunctionchains/status
   verbs:
   - get
@@ -39,12 +47,6 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - config.openshift.io
-  resources:
-  - dpuoperatorconfigs/status
-  verbs:
-  - get
 - apiGroups:
   - dpu.amd.com
   resources:
@@ -78,6 +80,8 @@ rules:
 - apiGroups:
   - svc.dpu.nvidia.com
   resources:
+  - dpuservicechains
+  - dpuserviceinterfaces
   - dpuservices
   verbs:
   - create

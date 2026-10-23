@@ -1,0 +1,52 @@
+- op: replace
+  path: /spec/template/spec/securityContext
+  value:
+    runAsNonRoot: false
+    runAsUser: 0
+    fsGroup: 0
+    seccompProfile:
+      type: RuntimeDefault
+- op: replace
+  path: /spec/template/spec/containers/0/args
+  value:
+    - --pci
+    - --metrics-bind-address=0
+    - --health-probe-bind-address=:8082
+- op: replace
+  path: /spec/template/spec/containers/0/imagePullPolicy
+  value: IfNotPresent
+- op: replace
+  path: /spec/template/spec/containers/0/env
+  value:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: DPU_BFB_URL
+      value: https://content.mellanox.com/BlueField/BFBs/Ubuntu22.04/bf-bundle-2.7.0-33_24.04_ubuntu-22.04_prod.bfb
+- op: replace
+  path: /spec/template/spec/containers/0/securityContext
+  value:
+    privileged: true
+    readOnlyRootFilesystem: true
+    runAsUser: 0
+    runAsNonRoot: false
+- op: replace
+  path: /spec/template/spec/containers/0/volumeMounts
+  value:
+    - name: grpc-socket
+      mountPath: /var/run/dpu-daemon
+    - name: sys
+      mountPath: /sys
+      readOnly: true
+- op: replace
+  path: /spec/template/spec/volumes
+  value:
+    - name: grpc-socket
+      hostPath:
+        path: /var/run/dpu-daemon
+        type: DirectoryOrCreate
+    - name: sys
+      hostPath:
+        path: /sys
+        type: Directory

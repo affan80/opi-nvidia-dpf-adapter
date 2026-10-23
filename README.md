@@ -9,9 +9,13 @@ This is the Kubernetes analogue of
 [`opi-nvidia-bridge`](https://github.com/opiproject/opi-nvidia-bridge):
 vendor knowledge is a sidecar to upstream, not a fork of it.
 
+Implementation contract (versions, install, annotations, chain graph, status
+ownership, uninstall):
+[docs/hybrid-integration-design.md](docs/hybrid-integration-design.md).
+
 ```
 OPI DataProcessingUnit   --FieldMapping YAML-->  DPUDevice + DPUFlavor + BFB + DPU
-OPI ServiceFunctionChain --FieldMapping YAML-->  DPUService (one per Helm chart NF)
+OPI ServiceFunctionChain --FieldMapping YAML-->  DPUService + DPUServiceInterface + DPUServiceChain
 ```
 
 Upstream OPI CRDs come from `opiproject/dpu-operator`. Downstream DPF
@@ -56,8 +60,9 @@ Concrete documents:
 
 | File | Watches | Emits |
 |---|---|---|
-| [`config/mappings/dataprocessingunit.yaml`](config/mappings/dataprocessingunit.yaml) | `config.openshift.io/v1 DataProcessingUnit` | `DPUDevice`, `DPUFlavor`, `BFB`, `DPU` |
-| [`config/mappings/servicefunctionchain.yaml`](config/mappings/servicefunctionchain.yaml) | `config.openshift.io/v1 ServiceFunctionChain` | `DPUService` per `networkFunctions[].chart` |
+| [`config/mappings/dataprocessingunit.yaml`](config/mappings/dataprocessingunit.yaml) | `config.openshift.io/v1 DataProcessingUnit` (BlueField) | `DPUDevice`, `DPUFlavor`, `BFB`, `DPU` |
+| [`config/mappings/servicefunctionchain.yaml`](config/mappings/servicefunctionchain.yaml) | `config.openshift.io/v1 ServiceFunctionChain` | `DPUService` + `DPUServiceInterface` per chart NF, plus one `DPUServiceChain` (never `DPUDeployment`) |
+| [`config/mappings/amd-dsc200.yaml`](config/mappings/amd-dsc200.yaml) | same DPU kind, guard `DSC\|Pensando` + non-empty serial | `DSCDevice`, `DSCProfile`, `DSCFirmware`, `DSCNodePolicy` (envtest stubs; not loaded on a BlueField host) |
 
 Each field is exactly one of:
 
@@ -66,8 +71,10 @@ Each field is exactly one of:
 - `value` — literal (DPF-required fields OPI does not have, e.g. `spec.nodeEffect.noEffect: true`)
 
 `forEach` + `when` is how one ServiceFunctionChain becomes N DPUServices
-and how a bare `image` NF is skipped (DPF has no field for a raw
-container image). Image-versus-chart is an OPI API upgrade
+and N DPUServiceInterfaces, plus one DPUServiceChain. A bare `image` NF
+is skipped (DPF has no field for a raw container image). The mapping
+never emits `DPUDeployment`: that controller would also own those
+children. Image-versus-chart is an OPI API upgrade
 ([`opiproject/dpu-operator#6`](https://github.com/opiproject/dpu-operator/pull/6));
 the YAML is the NVIDIA consumer of that `HelmChartSource`.
 
@@ -75,13 +82,36 @@ Schema and rules for what Go may not do:
 [docs/mapping-spec.md](docs/mapping-spec.md).
 
 ```sh
-go test ./pkg/mapping/ ./internal/controller/ -count=1
+go test ./pkg/mapping/ ./pkg/translation/ -count=1
 ```
 
 The controller tests use `client/fake` plus unstructured GVK
 registration. They load the real mapping YAML and assert a chart NF
-emits `spec.helmChart.source.repoURL` / `version`, while an image-only
-NF yields `NotFound`.
+emits `spec.helmChart.source.{repoURL,chart,version}` and
+`spec.security.privileged`, while an image-only NF yields `NotFound`.
+The translator reads the live CRD OpenAPI and omits undeclared spec
+fields (`pkg/translation/dead_fields.go`) so a lagging cluster CRD
+does not fail the whole apply.
+
+Status is a single-writer table (`config/condition-writers.yaml`):
+the daemon owns `Ready`; mappings write `DPFReady` / `DSCReady`; the
+LCM writes `VendorOperatorSupported`. SFC `status.conditions` is on
+the pinned OPI fixture.
+
+## Adding a vendor
+
+```bash
+make new-vendor VENDOR=acme GROUP=dpu.acme.com MODEL=A100 PREFIX=ACME
+```
+
+Onboarding a vendor touches five things, four of them data; the only Go is a
+`+kubebuilder:rbac` marker comment and, if the VSP must stamp serials, one PCI
+table entry. There is no per-vendor controller and no `switch` on Kind.
+
+See [docs/vendor-integration.md](docs/vendor-integration.md) for the checklist
+and the four mistakes the scaffold is shaped to prevent, and
+[docs/multi-vendor.md](docs/multi-vendor.md) for the AMD port as a worked
+example.
 
 ## Vendor-Specific Plugin
 
@@ -141,8 +171,23 @@ Local mock (no BlueField):
 go run ./cmd/vsp --metrics-bind-address=0 \
   --node-name=kind-worker \
   --serial-number=MTEXAMPLE0001 \
-  --bfb-url=https://example.invalid/fw.bfb
+  --firmware-url=https://example.invalid/fw.bfb
 ```
+
+`--vendor` rehearses another vendor's annotation keys with no card on the bus.
+The keys follow the hardware, so an AMD mock stamps `dpu.amd.com/serial-number`
+and `dpu.amd.com/firmware-url`, which is what `config/mappings/amd-dsc200.yaml`
+reads:
+
+```sh
+go run ./cmd/vsp --metrics-bind-address=0 \
+  --node-name=dh1 --vendor=amd \
+  --serial-number=DSCEXAMPLE0001 \
+  --firmware-url=https://example.invalid/dsc/1.46.0-E-28.tar
+```
+
+`--firmware-url` and `--firmware-name` replace `--bfb-url` and `--bfb-name`,
+which still work as deprecated aliases.
 
 gRPC only, no kubeconfig (macOS cannot bind `/var/run`):
 
@@ -169,6 +214,9 @@ the OPI and DPF CRDs.
 # Translator against an existing cluster
 go run ./cmd/main.go --mapping-dir=config/mappings --metrics-bind-address=0
 
+# NVIDIA enablement: spec.vendor enum nvidia|amd (annotation is the fallback)
+kubectl apply -f config/samples/dpuoperatorconfig-nvidia.yaml
+
 # Sample DPU with no serial; the VSP stamps it
 kubectl apply -f config/samples/dataprocessingunit.yaml
 ```
@@ -187,20 +235,57 @@ no-op for APIs this repo does not own).
 
 | Command | What it proves |
 |---|---|
-| `go test ./pkg/mapping/` | CEL/JSONPath interpreter + real mapping files |
+| `make verify-api` | Pins, fixtures, and mapping `to:` paths agree |
+| `make verify-rbac` | ClusterRole verbs match every emit kind |
+| `go test ./pkg/mapping/` | CEL/JSONPath interpreter + real mapping files + CRD agreement |
+| `go test ./pkg/lifecycle/` | Vendor sanitizer, skew window, `VendorOperatorSupported` |
+| `go test ./pkg/translation/` | SSA, omit-unknown, SFC DPFReady, chart vs image skip |
 | `go test ./pkg/discovery/` | PCI enumerator against mocked sysfs |
 | `go test ./pkg/vsp/` | GetDevices, opi-api handshake, NetworkFunction ack |
-| `go test ./internal/controller/` | Fake-client SFC chart vs image skip |
+| `go test ./test/conformance/` | envtest against pinned OPI + DPF fixtures |
 | `make test-e2e` | Kind: CRDs, mock VSP, DPU→DPUDevice, SFC→DPUService |
 
 `make test-e2e` creates a kind cluster, installs the vendored OPI and DPF CRDs from `test/e2e/crds/`, deploys the translator plus a mock VSP (`--serial-number` / `--bfb-url` from env), applies a `DataProcessingUnit` and a Helm-chart `ServiceFunctionChain`, and waits until `DPUDevice` and `DPUService` exist.
 
+## Pinned APIs
+
+Do not bump these without comparing installed OPI CRDs to
+`test/e2e/crds/opi` and mapping `to:` paths to the target DPF CRDs.
+Details: [docs/api-versions.md](docs/api-versions.md).
+
+| API | Version |
+|---|---|
+| Kubernetes | v1.36.4 (k3s v1.36.4+k3s1, modules v0.36.0) |
+| OPI CRDs | `config.openshift.io/v1` @ `c107ef719f74d4f841ceb1ed45bbd293b3739a3c` |
+| NVIDIA DPF | v26.4.0, support window `[v26.4.0, v27.0.0)` |
+
+```sh
+make verify-api
+```
+
 ## Status
 
-Phase 0 software for the companion adapter is in place. Physical
-BlueField handshake (`lspci` / sysfs / daemon `Init`) waits on lab
-SSH. Helm `NetworkFunction.chart` is proposed upstream in
-[opiproject/dpu-operator#6](https://github.com/opiproject/dpu-operator/pull/6).
+Translator, PCI VSP, and DPF v26.4.0 are running on lab host dh2
+(k3s v1.36.4+k3s1). `GetDevices` returns the BlueField serial
+`MT2321XZ0KVX`. Mapped writes that were dead are now live:
+
+| API | Lab result |
+|---|---|
+| `DpuOperatorConfig.spec.vendor` | enum `nvidia\|amd`; live object is `nvidia` |
+| `VendorOperatorSupported` | `True` / `Supported` for DPF v26.4.0 |
+| SFC `status.conditions[DPFReady]` | `True` / `AllServicesReady` on `sfc-chart-probe` |
+| `DPUService.spec.security.privileged` | `true` on `hbn` (v26.4 CEL) |
+| `DPUService.spec.helmChart.source.chart` | `hbn` |
+| AMD `DSC*` stub CRDs | not installed on this BlueField host |
+
+DPU and BFB stay `phase=Initializing`. That is the DPF operator, not a
+missing mapped field. Kind e2e still needs Docker Desktop. Helm
+`NetworkFunction.chart` is pinned from unmerged
+[opiproject/dpu-operator#6](https://github.com/opiproject/dpu-operator/pull/6)
+(`config/versions.yaml`, `patchState: unmerged`). It is not on upstream main.
+
+`spec.vendor` and the annotation are sanitized (`[a-z][a-z0-9-]{0,15}`).
+A path, URL, or shell fragment becomes `UnknownVendor` and is not echoed.
 
 ## License
 

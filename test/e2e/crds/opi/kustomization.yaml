@@ -6,3 +6,4 @@ kind: Kustomization
 resources:
 - config.openshift.io_dataprocessingunits.yaml
 - config.openshift.io_servicefunctionchains.yaml
+- config.openshift.io_dpuoperatorconfigs.yaml

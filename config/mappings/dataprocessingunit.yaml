@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./fieldmapping.schema.json
 apiVersion: translation.opi.nvidia.com/v1alpha1
 kind: FieldMapping
 metadata:
@@ -86,17 +87,33 @@ emit:
 
 # Mirror the emitted children's readiness back onto the DataProcessingUnit.
 # The DataProcessingUnit CRD status schema defines conditions[] (metav1), so a
-# Ready condition mirrors cleanly; custom scalar status fields would be pruned
-# by the apiserver and are intentionally omitted.
+# condition mirrors cleanly; custom scalar status fields would be pruned by the
+# apiserver and are intentionally omitted.
 #
-# Readiness contract: the source is Ready when every child that publishes
-# conditions reports Ready=True. Children whose CRD has no status subresource
-# (e.g. DPUFlavor) expose no conditions and are treated as non-blocking -- this
-# is the "smoothing" of a vendor status quirk the mapping layer is meant to do.
-# CEL is null-safe so children without status never error the roll-up.
+# Single-writer status model: this condition is DPFReady, NOT Ready. The
+# per-node dpu-operator daemon owns Ready on this very object -- it seeds it in
+# internal/platform/vendordetector.go and updates it from plugin-init plus VSP
+# ping in internal/daemon/daemon.go. Two controllers patching one condition type
+# would flap it on every reconcile, and Ready is also the CRD's printer column,
+# so losing that race shows a working card as not ready. The translation
+# controller therefore owns exactly one vendor-scoped condition and never
+# touches the daemon's. amd-dsc200.yaml does the same with DSCReady.
+#
+# Readiness contract: DPFReady is True only when every child is actually
+# ready. DPU and BFB CRDs default status.phase to Initializing and often
+# have no Ready condition until the DPF operator runs. Treating "no
+# conditions" as ready made DPFReady=True while those objects were still
+# Initializing. DPUFlavor has no phase and no conditions and stays
+# non-blocking.
 status:
+  # Ownership gate, matching the per-emit guards above. Without it this block
+  # still evaluated on an AMD card -- over zero children -- and parked
+  # DPFReady=False on hardware this mapping owns nothing of.
+  when: "source.spec.?dpuProductName.orValue('BlueField').startsWith('BlueField')"
+  # DataProcessingUnit CRD declares status.conditions; DPFReady is stored.
+  schema: conditions
   conditions:
-    - type: Ready
-      status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).size() == 0 || c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True'))"
+    - type: DPFReady
+      status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True') || (c.?status.?conditions.orValue([]).size() == 0 && (c.?status.?phase.orValue('') == '' || c.status.phase == 'Ready')))"
       reason: AllChildrenReady
       message: "All emitted DPF objects that publish readiness report Ready"

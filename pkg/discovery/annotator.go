@@ -31,15 +31,19 @@ import (
 
 // Annotator watches OPI DataProcessingUnit objects on this node and
 // stamps hardware identity annotations the translation engine already
-// reads. It does not emit DPF objects.
+// reads. The serial-number key is chosen per vendor, so one annotator
+// serves NVIDIA, AMD and Marvell cards. It does not emit DPF objects.
 type Annotator struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Enumerator Enumerator
 	NodeName   string
-	BFBURL     string
-	Flavor     string
-	BFBName    string
+	// FirmwareURL, Flavor and FirmwareName are vendor-neutral VALUES. The
+	// annotation KEY each one is written under is chosen per vendor from
+	// AnnotationsFor, so the same operand serves a BlueField and a DSC.
+	FirmwareURL  string
+	Flavor       string
+	FirmwareName string
 }
 
 func (a *Annotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -64,28 +68,38 @@ func (a *Annotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 		return ctrl.Result{}, fmt.Errorf("enumerate dpu hardware: %w", err)
 	}
 	if len(devices) == 0 {
-		log.Info("no NVIDIA DPU on this node; leaving annotations unchanged")
+		log.Info("no supported DPU on this node; leaving annotations unchanged")
 		return ctrl.Result{}, nil
 	}
 
 	// Intel returns function 0 of the matching serial. We take the first
-	// discovered BlueField until multi-DPU-per-node is required.
+	// discovered DPU until multi-DPU-per-node is required.
 	dev := devices[0]
 	if dev.SerialNumber == "" {
 		return ctrl.Result{}, fmt.Errorf("discovered device %s has empty serial number", dev.PCIAddress)
 	}
 
-	desired := map[string]string{
-		SerialNumberAnnotation: dev.SerialNumber,
+	// The keys are chosen by the hardware, not by this binary: an AMD card
+	// must be stamped with dpu.amd.com/serial-number and
+	// dpu.amd.com/firmware-url, because that is what
+	// config/mappings/amd-dsc200.yaml reads -- and both are required there.
+	keys, ok := AnnotationsFor(dev.VendorID)
+	if !ok {
+		return ctrl.Result{}, fmt.Errorf(
+			"device %s: no annotation keys for PCI vendor %#04x", dev.PCIAddress, dev.VendorID)
 	}
-	if a.BFBURL != "" {
-		desired[BFBURLAnnotation] = a.BFBURL
+
+	desired := map[string]string{
+		keys.Serial: dev.SerialNumber,
+	}
+	if a.FirmwareURL != "" {
+		desired[keys.FirmwareURL] = a.FirmwareURL
 	}
 	if a.Flavor != "" {
-		desired[FlavorAnnotation] = a.Flavor
+		desired[keys.Flavor] = a.Flavor
 	}
-	if a.BFBName != "" {
-		desired[BFBNameAnnotation] = a.BFBName
+	if a.FirmwareName != "" {
+		desired[keys.FirmwareName] = a.FirmwareName
 	}
 
 	if annotationsMatch(dpu.GetAnnotations(), desired) {
@@ -106,6 +120,8 @@ func (a *Annotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 	log.Info("stamped hardware identity",
 		"dpu", dpu.GetName(),
 		"serial", dev.SerialNumber,
+		"serialKey", keys.Serial,
+		"product", dev.ProductName,
 		"pci", dev.PCIAddress,
 		"node", node)
 	return ctrl.Result{}, nil

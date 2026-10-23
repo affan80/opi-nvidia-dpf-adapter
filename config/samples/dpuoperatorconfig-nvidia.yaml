@@ -1,0 +1,15 @@
+# NVIDIA enablement contract.
+#
+# spec.vendor is enum nvidia|amd on the pinned OPI fixture. The annotation
+# is the fallback for clusters that have not rolled that CRD. The LCM
+# sanitizes both paths and rejects anything else (UnknownVendor).
+apiVersion: config.openshift.io/v1
+kind: DpuOperatorConfig
+metadata:
+  name: dpu-operator-config
+  annotations:
+    lifecycle.opi.nvidia.com/vendor: nvidia
+    lifecycle.opi.nvidia.com/vendor-operator-version: v26.4.0
+spec:
+  logLevel: 2
+  vendor: nvidia

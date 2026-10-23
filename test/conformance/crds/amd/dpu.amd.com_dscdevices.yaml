@@ -38,20 +38,30 @@ spec:
             properties:
               deviceSerial:
                 description: Board serial number, from PCI VPD keyword SN.
+                maxLength: 64
+                minLength: 1
+                pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$
                 type: string
               pciAddress:
                 description: PCIe address of the card's management function.
+                pattern: ^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]$
                 type: string
               productName:
                 description: Vendor and model name, e.g. DSC2-100.
+                maxLength: 256
                 type: string
               management:
                 properties:
                   driver:
                     description: Host driver bound to the management function.
+                    enum:
+                    - ionic
                     type: string
                   interface:
                     description: Management path, oob or inband.
+                    enum:
+                    - oob
+                    - inband
                     type: string
                 type: object
             required:

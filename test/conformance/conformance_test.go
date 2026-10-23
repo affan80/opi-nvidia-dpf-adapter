@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
+	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/mapping"
 	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/translation"
 )
 
@@ -61,22 +62,29 @@ type conformanceCase struct {
 	// statusPruned marks a source whose CRD status schema drops mirrored fields
 	// (the current ServiceFunctionChain). Such a case asserts GC/owner-refs only.
 	statusPruned bool
-	// expectReady asserts the source carries a mirrored Ready=True condition
-	// after status-capable children are marked ready.
+	// expectReady asserts the source carries the mirrored condition named by
+	// readyCondition with status True, after status-capable children are
+	// marked ready.
 	expectReady bool
-	// readyCondition is the condition type this mapping mirrors, defaulting to
-	// Ready. Mappings that share a source kind must not share a condition type:
-	// the controller upserts conditions by type, so two vendors both writing
-	// Ready would overwrite each other on every reconcile.
+	// readyCondition is the condition type this mapping mirrors. It has no
+	// default and must be vendor-scoped: mappings that share a source kind must
+	// not share a condition type, because the controller upserts conditions by
+	// type and two vendors both writing one would overwrite each other on every
+	// reconcile. It also may not be "Ready" -- that condition belongs to the
+	// per-node dpu-operator daemon (mapping.ReservedConditionType).
 	readyCondition string
 }
 
-// readyConditionType is the condition a case asserts, defaulting to Ready.
+// readyConditionType is the condition a case asserts. There is deliberately no
+// default: a case that asserts readiness must name the condition it owns, so a
+// mapping silently falling back onto the daemon's Ready cannot pass.
 func (c conformanceCase) readyConditionType() string {
-	if c.readyCondition != "" {
-		return c.readyCondition
-	}
-	return "Ready"
+	GinkgoHelper()
+	Expect(c.readyCondition).NotTo(BeEmpty(),
+		"case %q sets expectReady but names no readyCondition", c.name)
+	Expect(c.readyCondition).NotTo(Equal(mapping.ReservedConditionType),
+		"case %q mirrors %q, which the dpu-operator daemon owns", c.name, mapping.ReservedConditionType)
+	return c.readyCondition
 }
 
 const (
@@ -86,7 +94,7 @@ const (
 
 var cases = []conformanceCase{
 	{
-		name:        "ServiceFunctionChain → DPUService",
+		name:        "ServiceFunctionChain → DPUService + DPUServiceInterface + DPUServiceChain",
 		mappingName: "servicefunctionchain",
 		srcGVK:      sfcGVK,
 		srcNN:       types.NamespacedName{Name: "conf-chain", Namespace: "default"},
@@ -105,9 +113,30 @@ spec:
       version: v25.10.1
 `,
 		children: []childSpec{
-			{gvk: svcGVK, name: "hbn", ns: "default", setReady: true},
+			{
+				gvk: svcGVK, name: "hbn", ns: "default", setReady: true,
+				wantFields: map[string]any{
+					"spec.serviceID":                "hbn",
+					"spec.helmChart.source.repoURL": "https://helm.ngc.nvidia.com/nvidia/doca",
+					"spec.helmChart.source.chart":   "hbn",
+					"spec.helmChart.source.version": "v25.10.1",
+					"spec.security.privileged":      true,
+				},
+			},
+			{
+				gvk: ifcGVK, name: "hbn-ifc", ns: "default", setReady: true,
+				wantFields: map[string]any{
+					"spec.template.spec.template.spec.interfaceType":         "service",
+					"spec.template.spec.template.spec.service.serviceID":     "hbn",
+					"spec.template.spec.template.spec.service.interfaceName": "net0",
+					"spec.template.spec.template.spec.service.network":       "default",
+				},
+			},
+			{
+				gvk: chainGVK, name: "conf-chain", ns: "default", setReady: true,
+			},
 		},
-		statusPruned: true, // SFC CRD status is an empty object; mirror is pruned.
+		statusPruned: false, // pinned OPI SFC CRD now keeps status.conditions.
 	},
 	{
 		name:        "DataProcessingUnit → DPU/DPUDevice/DPUFlavor/BFB",
@@ -136,7 +165,8 @@ spec:
 			// treated as non-blocking by the mapping's readiness CEL.
 			{gvk: flavorGVK, name: "dpf-default-flavor", ns: dpfNS, setReady: false},
 		},
-		expectReady: true,
+		expectReady:    true,
+		readyCondition: "DPFReady",
 	},
 	{
 		// Second vendor, same source kind, same engine, zero Go. Driven by the
@@ -264,6 +294,16 @@ var _ = Describe("Hybrid translation conformance", func() {
 					Expect(cond).NotTo(BeNil(), "source is missing a mirrored %s condition", condType)
 					Expect(cond["status"]).To(Equal("True"),
 						"mirrored %s condition should be True once ready children report Ready", condType)
+
+					By("leaving the daemon-owned condition untouched")
+					// Single-writer status model. Validate blocks a mapping that
+					// declares Ready; this asserts the running controller never
+					// puts one on the source by any other route, so the per-node
+					// dpu-operator daemon stays the only writer of Ready.
+					Expect(conditionByType(got, mapping.ReservedConditionType)).To(BeNil(),
+						"controller wrote %q on the source; that condition belongs to the "+
+							"dpu-operator daemon and the two would flap it every reconcile",
+						mapping.ReservedConditionType)
 				}
 			})
 		})
@@ -495,6 +535,27 @@ spec:
 		// and neither may appear in the other vendor's namespace.
 		expectAbsent(flavorGVK, types.NamespacedName{Name: "dpf-default-flavor", Namespace: amdNS})
 		expectAbsent(dscProfileGVK, types.NamespacedName{Name: "dsc-default-profile", Namespace: dpfNS})
+
+		By("neither card carries the other vendor's condition")
+		// The status.when ownership gate. Before it, a mapping whose emits were
+		// all guarded off still evaluated its readiness roll-up -- over zero
+		// children -- and parked a False condition on the other vendor's card.
+		// Objects isolating correctly while status did not is exactly the gap
+		// this closes, so it is asserted here rather than only in unit tests.
+		amdGot := getObject(dpuGVK, amdNN)
+		Expect(conditionByType(amdGot, "DPFReady")).To(BeNil(),
+			"the DPF mapping wrote DPFReady onto an AMD card it emitted nothing for")
+
+		bfGot := getObject(dpuGVK, bfNN)
+		Expect(conditionByType(bfGot, "DSCReady")).To(BeNil(),
+			"the AMD mapping wrote DSCReady onto a BlueField card it emitted nothing for")
+
+		By("each card still carries its own vendor's condition")
+		// The gate must suppress only foreign mappings, not all mirroring.
+		Expect(conditionByType(amdGot, "DSCReady")).NotTo(BeNil(),
+			"the AMD card lost its own DSCReady condition; the gate is too aggressive")
+		Expect(conditionByType(bfGot, "DPFReady")).NotTo(BeNil(),
+			"the BlueField card lost its own DPFReady condition; the gate is too aggressive")
 	})
 })
 

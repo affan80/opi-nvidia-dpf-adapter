@@ -64,12 +64,17 @@ var _ = Describe("ServiceFunctionChain translation", func() {
 		Expect(clientgoscheme.AddToScheme(scheme)).To(Succeed())
 		registerUnstructuredGVK(scheme, spec.Source.GVK())
 		Expect(spec.Emit).NotTo(BeEmpty())
-		dpuServiceGVK = spec.Emit[0].Target.GVK()
-		registerUnstructuredGVK(scheme, dpuServiceGVK)
+		for _, emit := range spec.Emit {
+			registerUnstructuredGVK(scheme, emit.Target.GVK())
+			if emit.Target.Kind == "DPUService" {
+				dpuServiceGVK = emit.Target.GVK()
+			}
+		}
+		Expect(dpuServiceGVK.Kind).To(Equal("DPUService"))
 	})
 
 	Context("NetworkFunction with a Chart", func() {
-		It("emits a DPUService with helmChart.source repoURL and version", func() {
+		It("emits a DPUService with helmChart.source repoURL, chart, and version", func() {
 			sfc := newSFC(sfcName, []any{
 				map[string]any{
 					"name": chartNFName,
@@ -93,12 +98,67 @@ var _ = Describe("ServiceFunctionChain translation", func() {
 			repo, _, err := unstructured.NestedString(svc.Object, "spec", "helmChart", "source", "repoURL")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repo).To(Equal(helmRepoURL))
+			chart, _, err := unstructured.NestedString(svc.Object, "spec", "helmChart", "source", "chart")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(chart).To(Equal(chartNFName))
 			version, _, err := unstructured.NestedString(svc.Object, "spec", "helmChart", "source", "version")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(version).To(Equal(helmChartVersion))
 			priv, _, err := unstructured.NestedBool(svc.Object, "spec", "security", "privileged")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(priv).To(BeTrue())
+
+			ifc := &unstructured.Unstructured{}
+			ifc.SetGroupVersionKind(schema.GroupVersionKind{
+				Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceInterface",
+			})
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{
+				Name: chartNFName + "-ifc", Namespace: sfcNamespace,
+			}, ifc)).To(Succeed())
+
+			chain := &unstructured.Unstructured{}
+			chain.SetGroupVersionKind(schema.GroupVersionKind{
+				Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceChain",
+			})
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{
+				Name: sfcName, Namespace: sfcNamespace,
+			}, chain)).To(Succeed())
+		})
+	})
+
+	Context("SFC status.conditions", func() {
+		It("persists DPFReady on the pinned ServiceFunctionChain schema", func() {
+			Expect(spec.Status.Schema).To(Equal(mapping.StatusSchemaConditions))
+			sfc := newSFC(sfcName, []any{
+				map[string]any{
+					"name": chartNFName,
+					"chart": map[string]any{
+						"repository": helmRepoURL,
+						"name":       chartNFName,
+						"version":    helmChartVersion,
+					},
+				},
+			})
+			fakeClient = fake.NewClientBuilder().WithScheme(scheme).WithObjects(sfc).WithStatusSubresource(sfc).Build()
+			Expect(reconcileSFC(fakeClient, scheme, spec, sfc)).To(Succeed())
+
+			got := &unstructured.Unstructured{}
+			got.SetGroupVersionKind(spec.Source.GVK())
+			Expect(fakeClient.Get(context.Background(), types.NamespacedName{
+				Name: sfcName, Namespace: sfcNamespace,
+			}, got)).To(Succeed())
+			conds, found, err := unstructured.NestedSlice(got.Object, "status", "conditions")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue(), "controller skipped status.conditions on a conditions schema")
+			foundDPFReady := false
+			for _, raw := range conds {
+				c, ok := raw.(map[string]any)
+				if ok && c["type"] == "DPFReady" {
+					foundDPFReady = true
+					break
+				}
+			}
+			Expect(foundDPFReady).To(BeTrue(), "DPFReady missing from ServiceFunctionChain status")
 		})
 	})
 

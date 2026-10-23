@@ -1,0 +1,56 @@
+# Expected DPF children of config/samples/servicefunctionchain.yaml
+# under the direct ownership model. The translation controller stamps
+# a ServiceFunctionChain ownerRef in this same namespace. Do not apply
+# a DPUDeployment for the same chain.
+apiVersion: svc.dpu.nvidia.com/v1alpha1
+kind: DPUService
+metadata:
+  name: hbn
+  namespace: default
+spec:
+  serviceID: hbn
+  helmChart:
+    source:
+      repoURL: https://helm.ngc.nvidia.com/nvidia/doca
+      chart: hbn
+      version: v25.10.1
+  interfaces:
+    - hbn-ifc
+  paused: false
+  security:
+    privileged: true
+---
+apiVersion: svc.dpu.nvidia.com/v1alpha1
+kind: DPUServiceInterface
+metadata:
+  name: hbn-ifc
+  namespace: default
+spec:
+  template:
+    spec:
+      template:
+        metadata:
+          labels:
+            service: hbn
+        spec:
+          interfaceType: service
+          service:
+            serviceID: hbn
+            interfaceName: net0
+            network: default
+---
+apiVersion: svc.dpu.nvidia.com/v1alpha1
+kind: DPUServiceChain
+metadata:
+  name: hbn-chain
+  namespace: default
+spec:
+  template:
+    spec:
+      template:
+        spec:
+          switches:
+            - ports:
+                - serviceInterface:
+                    matchLabels:
+                      service: hbn

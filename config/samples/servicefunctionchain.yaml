@@ -1,0 +1,17 @@
+# Chart-based ServiceFunctionChain. Admitted by the OPI CRD vendored from
+# unmerged opiproject/dpu-operator#6 (pinned in config/versions.yaml).
+# Upstream main still requires image and rejects chart.
+# Direct ownership: this object owns DPUService + DPUServiceInterface +
+# DPUServiceChain. See config/samples/service-chain-direct-children.yaml.
+apiVersion: config.openshift.io/v1
+kind: ServiceFunctionChain
+metadata:
+  name: hbn-chain
+  namespace: default
+spec:
+  networkFunctions:
+  - name: hbn
+    chart:
+      name: hbn
+      repository: https://helm.ngc.nvidia.com/nvidia/doca
+      version: v25.10.1

@@ -23,7 +23,7 @@ import (
 )
 
 func condition(status string) map[string]any {
-	return map[string]any{"type": "Ready", "status": status, "reason": "R", "message": "m"}
+	return map[string]any{"type": "DPFReady", "status": status, "reason": "R", "message": "m"}
 }
 
 func firstCondition(t *testing.T, src *unstructured.Unstructured) map[string]any {
@@ -69,5 +69,26 @@ func TestApplyStatusSetsAndStampsTransitionTime(t *testing.T) {
 	}
 	if firstCondition(t, src)["status"] != "False" {
 		t.Errorf("condition did not flip to False")
+	}
+}
+
+func TestApplyStatusDoesNotWriteDaemonReady(t *testing.T) {
+	src := &unstructured.Unstructured{Object: map[string]any{}}
+	desired := map[string]any{"conditions": []any{
+		map[string]any{"type": "Ready", "status": "True", "reason": "Stolen"},
+		map[string]any{"type": "DPFReady", "status": "True", "reason": "R"},
+	}}
+	if !applyStatus(src, desired) {
+		t.Fatal("expected DPFReady to be written")
+	}
+	conds, _, _ := unstructured.NestedSlice(src.Object, "status", "conditions")
+	for _, c := range conds {
+		m, _ := c.(map[string]any)
+		if m["type"] == "Ready" {
+			t.Fatalf("merge wrote daemon-owned Ready: %#v", m)
+		}
+	}
+	if firstCondition(t, src)["type"] != "DPFReady" {
+		t.Errorf("kept condition=%v, want DPFReady", firstCondition(t, src)["type"])
 	}
 }

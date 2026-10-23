@@ -32,6 +32,9 @@ emit:
       - to: spec.helmChart.source.repoURL
         cel: "item.chart.repository"
         required: true
+      - to: spec.helmChart.source.chart
+        cel: "item.chart.name"
+        required: true
       - to: spec.helmChart.source.version
         cel: "item.chart.version"
         required: true

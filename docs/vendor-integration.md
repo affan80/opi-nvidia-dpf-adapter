@@ -174,12 +174,16 @@ every translation into a silent no-op or an apply error, and the only symptom is
 objects that never become ready. That is an afternoon of debugging unless the
 adapter says so out loud.
 
-So add the window your conformance run actually passed against to
+Compare the installed OPI CRDs to `test/e2e/crds/opi` and the mapping
+`to:` paths to the target vendor CRDs **before** pinning a release.
+`config/versions.yaml` is the pin; `make verify-api` is the drift gate.
+
+Then add the window that comparison actually passed against to
 `supportedVersions` in `pkg/lifecycle/version.go`:
 
 ```go
 var supportedVersions = map[string]SupportedRange{
-    "nvidia": {MinInclusive: "v25.1.0", MaxExclusive: "v26.0.0"},
+    "nvidia": {MinInclusive: "v26.4.0", MaxExclusive: "v27.0.0"},
 }
 ```
 
@@ -207,21 +211,25 @@ too, and it is that CRD's printer column.
 ### How the vendor and version are declared
 
 Until upstream `DpuOperatorConfig` grows a `spec.vendor` field, both are
-annotations:
+annotations. That is the NVIDIA enablement contract. A versioned upstream
+schema change is not used: this adapter does not own the OPI CRD, and on a
+live cluster `spec.vendor` is a `BadRequest` (strict decoding, unknown field).
 
 ```yaml
+# config/samples/dpuoperatorconfig-nvidia.yaml
 metadata:
+  name: dpu-operator-config
   annotations:
     lifecycle.opi.nvidia.com/vendor: nvidia
-    lifecycle.opi.nvidia.com/vendor-operator-version: v25.4.0
+    lifecycle.opi.nvidia.com/vendor-operator-version: v26.4.0
+spec:
+  logLevel: 2
 ```
 
-`spec.vendor` takes precedence when present, so nothing changes the day it
-lands. The annotation is not a convenience: the apiserver **prunes** unknown
-spec fields, so `spec.vendor` reads empty on a real cluster today and the
-reconcile would short-circuit before reporting anything. The conformance suite
-found that, because it runs against a real apiserver where pruning happens
-rather than a fake client that keeps whatever it is handed.
+`spec.vendor` still takes precedence if a future CRD accepts it. The LCM
+rejects unknown vendors (`VendorOperatorSupported=False`, reason
+`UnknownVendor`). Allowed values: `nvidia`, `amd`. The CRD cannot validate
+the annotation, so the controller does.
 
 ## Further reading
 

@@ -48,6 +48,22 @@ func TestValidateRejectsReservedCondition(t *testing.T) {
 
 // TestValidateAcceptsVendorScopedCondition is the negative control: the rule
 // must reject only the reserved type, not condition mirroring as such.
+func TestValidateRequiresStatusSchema(t *testing.T) {
+	s := minimalSpec("DPFReady")
+	s.Status.Schema = ""
+	if err := s.Validate(); err == nil {
+		t.Fatal("Validate accepted status.conditions with no status.schema; a pruned CRD would silently drop the write")
+	}
+	s.Status.Schema = "unknown"
+	if err := s.Validate(); err == nil {
+		t.Fatal("Validate accepted status.schema=unknown")
+	}
+	s.Status.Schema = StatusSchemaPruned
+	if err := s.Validate(); err != nil {
+		t.Fatalf("Validate rejected pruned schema: %v", err)
+	}
+}
+
 func TestValidateAcceptsVendorScopedCondition(t *testing.T) {
 	for _, condType := range []string{"DPFReady", "DSCReady", "ReadyForTraffic"} {
 		t.Run(condType, func(t *testing.T) {
@@ -127,6 +143,7 @@ func minimalSpec(condType string) *Spec {
 			Fields: []Field{{To: "spec.serialNumber", Value: "unit-serial"}},
 		}},
 		Status: &StatusMapping{
+			Schema: StatusSchemaConditions,
 			Conditions: []StatusCondition{{
 				Type:   condType,
 				Status: "children.size() > 0",

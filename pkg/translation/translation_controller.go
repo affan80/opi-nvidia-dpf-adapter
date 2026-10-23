@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -61,6 +63,9 @@ type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Spec   *mapping.Spec
+
+	schemaMu sync.Mutex
+	schemas  map[schema.GroupVersionKind]map[string]any
 }
 
 // RBAC for the mapped kinds is NOT declared here. It is generated into
@@ -158,13 +163,35 @@ func (r *Reconciler) cleanupAnnotatedChildren(ctx context.Context, src *unstruct
 
 func (r *Reconciler) applyOne(ctx context.Context, src, obj *unstructured.Unstructured) error {
 	stampOwner(src, obj, r.Scheme)
+	log := logf.FromContext(ctx)
 
-	obj.SetManagedFields(nil)
-	return r.Apply(ctx,
-		client.ApplyConfigurationFromUnstructured(obj),
-		client.ForceOwnership,
-		client.FieldOwner(fieldOwner),
-	)
+	if schema, err := r.liveCRDSchema(ctx, obj.GroupVersionKind()); err == nil && schema != nil {
+		for _, path := range pruneUnknownSpec(obj, schema) {
+			log.Info("omitted field not on live CRD schema",
+				"kind", obj.GetKind(), "name", obj.GetName(), "field", path)
+		}
+	}
+
+	// Safety net: if the live OpenAPI still rejects a field (stale cache,
+	// CRD get forbidden), drop that path and retry.
+	for range 8 {
+		obj.SetManagedFields(nil)
+		err := r.Apply(ctx,
+			client.ApplyConfigurationFromUnstructured(obj),
+			client.ForceOwnership,
+			client.FieldOwner(fieldOwner),
+		)
+		if err == nil {
+			return nil
+		}
+		path, dropErr := omitLiveUnknownFields(obj, err)
+		if dropErr != nil {
+			return dropErr
+		}
+		log.Info("omitted field not declared in live CRD",
+			"kind", obj.GetKind(), "name", obj.GetName(), "field", path)
+	}
+	return fmt.Errorf("apply %s/%s: too many live-unknown fields", obj.GetKind(), obj.GetName())
 }
 
 // mirrorStatus rolls the status of emitted children back onto the OPI source,
@@ -172,6 +199,12 @@ func (r *Reconciler) applyOne(ctx context.Context, src, obj *unstructured.Unstru
 // declares no status rules or when the computed status matches what is stored.
 func (r *Reconciler) mirrorStatus(ctx context.Context, src *unstructured.Unstructured) error {
 	if r.Spec.Status == nil {
+		return nil
+	}
+	// When the source CRD status object has no conditions[], a write is
+	// pruned by the apiserver. Skip the update so we do not pretend DPFReady
+	// landed. Flip status.schema to "conditions" when upstream adds the field.
+	if r.Spec.Status.Schema == mapping.StatusSchemaPruned {
 		return nil
 	}
 	objs, err := r.listChildObjects(ctx, src)
@@ -287,6 +320,11 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 			continue
 		}
 		t, _ := dm["type"].(string)
+		if strings.EqualFold(t, mapping.ReservedConditionType) {
+			// VSP/OPI daemon owns Ready. Never upsert it even if a mapping
+			// slipped past Validate.
+			continue
+		}
 		next := map[string]any{"type": t, "status": dm["status"]}
 		if v, ok := dm["reason"]; ok {
 			next["reason"] = v

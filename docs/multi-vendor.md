@@ -205,10 +205,16 @@ overwrite each other every reconcile.
 
 There are two writers in play on an OPI source, and only one of them is ours:
 
-| Writer | Condition | Where |
-| --- | --- | --- |
-| dpu-operator daemon (per node) | `Ready` | seeded `False/Initializing` in `internal/platform/vendordetector.go`, then updated from plugin-init + VSP ping in `internal/daemon/daemon.go` |
-| this translation controller | `DPFReady` / `DSCReady` | the `status:` block of each mapping |
+| Writer | Condition | Object | Schema |
+| --- | --- | --- | --- |
+| VSP/OPI daemon (per node) | `Ready` | DataProcessingUnit, DpuOperatorConfig | `conditions` |
+| mapping:dataprocessingunit | `DPFReady` | DataProcessingUnit | `conditions` |
+| mapping:amd-dsc200 | `DSCReady` | DataProcessingUnit | `conditions` |
+| mapping:servicefunctionchain | `DPFReady` | ServiceFunctionChain | `pruned` (empty status object; no Status().Update) |
+| lifecycle | `VendorOperatorSupported` | DpuOperatorConfig | `conditions` |
+
+Machine-readable copy: `config/condition-writers.yaml`. Two writers on one
+(object, type) fail `LoadConditionWriterTable`.
 
 Both reach for `plugin.ReadyConditionType` (`= "Ready"`), and the daemon's writer
 is not a one-shot: it re-evaluates on every ping cycle, so a second writer does

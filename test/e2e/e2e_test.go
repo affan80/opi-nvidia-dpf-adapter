@@ -402,6 +402,12 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 
 			cmd = exec.Command("kubectl", "get", "dpuservices.svc.dpu.nvidia.com",
+				e2eChartNF, "-n", "default", "-o", "jsonpath={.spec.helmChart.source.chart}")
+			chart, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.TrimSpace(chart)).To(Equal(e2eChartNF))
+
+			cmd = exec.Command("kubectl", "get", "dpuservices.svc.dpu.nvidia.com",
 				e2eChartNF, "-n", "default", "-o", "jsonpath={.spec.helmChart.source.version}")
 			version, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())

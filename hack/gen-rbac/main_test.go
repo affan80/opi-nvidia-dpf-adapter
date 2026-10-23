@@ -31,6 +31,8 @@ func TestPluralize(t *testing.T) {
 		{"DataProcessingUnit", "dataprocessingunits"},
 		{"ServiceFunctionChain", "servicefunctionchains"},
 		{"DPUService", "dpuservices"},
+		{"DPUServiceInterface", "dpuserviceinterfaces"},
+		{"DPUServiceChain", "dpuservicechains"},
 		{"DPUDevice", "dpudevices"},
 		{"DPUFlavor", "dpuflavors"},
 		{"DPU", "dpus"},

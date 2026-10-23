@@ -15,4 +15,4 @@ package translation
 // +kubebuilder:rbac:groups=config.openshift.io,resources=dataprocessingunits;servicefunctionchains,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=dpu.amd.com,resources=dscdevices;dscfirmwares;dscnodepolicies;dscprofiles,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=provisioning.dpu.nvidia.com,resources=bfbs;dpudevices;dpuflavors;dpus,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=svc.dpu.nvidia.com,resources=dpuservices,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=svc.dpu.nvidia.com,resources=dpuservicechains;dpuserviceinterfaces;dpuservices,verbs=get;list;watch;create;update;patch;delete

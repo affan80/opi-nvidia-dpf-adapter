@@ -60,7 +60,7 @@ emit:
       group: dpu.amd.com
       version: v1alpha1
       kind: DSCDevice
-    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando') && source.metadata.?annotations['dpu.amd.com/serial-number'].orValue('') != ''"
     name:
       cel: "source.metadata.name + '-dsc'"
     fields:
@@ -87,7 +87,7 @@ emit:
       group: dpu.amd.com
       version: v1alpha1
       kind: DSCProfile
-    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando') && source.metadata.?annotations['dpu.amd.com/serial-number'].orValue('') != ''"
     name:
       cel: "source.metadata.?annotations['dpu.amd.com/profile'].orValue('dsc-default-profile')"
     fields:
@@ -104,7 +104,7 @@ emit:
       group: dpu.amd.com
       version: v1alpha1
       kind: DSCFirmware
-    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando') && source.metadata.?annotations['dpu.amd.com/serial-number'].orValue('') != ''"
     name:
       cel: "source.metadata.?annotations['dpu.amd.com/firmware'].orValue('dsc-fw-bundle')"
     fields:
@@ -121,7 +121,7 @@ emit:
       group: dpu.amd.com
       version: v1alpha1
       kind: DSCNodePolicy
-    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+    when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando') && source.metadata.?annotations['dpu.amd.com/serial-number'].orValue('') != ''"
     name:
       from: metadata.name
     fields:
@@ -151,7 +151,9 @@ emit:
 status:
   # Ownership gate, matching the per-emit guards above: write nothing at all on
   # a card this mapping does not claim.
-  when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando')"
+  when: "source.spec.?dpuProductName.orValue('').matches('DSC|Pensando') && source.metadata.?annotations['dpu.amd.com/serial-number'].orValue('') != ''"
+  # Same DataProcessingUnit CRD as the NVIDIA mapping: status.conditions exists.
+  schema: conditions
   conditions:
     - type: DSCReady
       status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).size() == 0 || c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True'))"

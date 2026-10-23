@@ -159,11 +159,12 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		name, vendor, installed string
 		wantStatus, wantReason  string
 	}{
-		{"inside the supported window", "nvidia", "v25.4.0", "True", string(lifecycle.SkewSupported)},
-		{"older than supported", "nvidia", "v24.1.0", "False", string(lifecycle.SkewTooOld)},
-		{"newer than supported", "nvidia", "v26.1.0", "False", string(lifecycle.SkewTooNew)},
+		{"inside the supported window", "nvidia", "v26.4.0", "True", string(lifecycle.SkewSupported)},
+		{"older than supported", "nvidia", "v25.4.0", "False", string(lifecycle.SkewTooOld)},
+		{"newer than supported", "nvidia", "v27.1.0", "False", string(lifecycle.SkewTooNew)},
 		{"version not determinable", "nvidia", "", "Unknown", string(lifecycle.SkewUnknown)},
 		{"vendor with no pinned window", "amd", "v1.46.0", "Unknown", string(lifecycle.SkewUnpinned)},
+		{"unknown vendor is rejected", "acme", "v1.0.0", "False", string(lifecycle.SkewUnknownVendor)},
 	} {
 		tc := tc
 		Context(tc.name, func() {
@@ -173,9 +174,8 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 				cfg := &unstructured.Unstructured{}
 				cfg.SetGroupVersionKind(lifecycle.DpuOperatorConfigGVK)
 				cfg.SetName(name)
-				// Via annotations, not spec.vendor: the upstream CRD has no
-				// such field, so a real apiserver prunes it. That is the whole
-				// point of asserting this against envtest.
+				// Unknown vendors stay on the annotation: spec.vendor is
+				// enum nvidia|amd and the apiserver rejects anything else.
 				ann := map[string]string{lifecycle.VendorAnnotation: tc.vendor}
 				if tc.installed != "" {
 					ann[lifecycle.VersionAnnotation] = tc.installed
@@ -217,7 +217,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		cfg.SetName(name)
 		cfg.SetAnnotations(map[string]string{
 			lifecycle.VendorAnnotation:  "nvidia",
-			lifecycle.VersionAnnotation: "v25.4.0",
+			lifecycle.VersionAnnotation: "v26.4.0",
 		})
 		Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, cfg) })
@@ -239,5 +239,58 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 			}
 		}
 		Expect(n).To(Equal(1), "conditions are upserted by type, so repeated reconciles must not accumulate")
+	})
+
+	It("accepts spec.vendor nvidia and rejects free-form or injected values", func() {
+		good := &unstructured.Unstructured{Object: map[string]any{
+			"spec": map[string]any{"vendor": "nvidia", "logLevel": int64(2)},
+		}}
+		good.SetGroupVersionKind(lifecycle.DpuOperatorConfigGVK)
+		good.SetName(fmt.Sprintf("spec-vendor-%d", time.Now().UnixNano()))
+		good.SetAnnotations(map[string]string{
+			lifecycle.VersionAnnotation: "v26.4.0",
+		})
+		Expect(k8sClient.Create(ctx, good)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, good) })
+		got := getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: good.GetName()})
+		Expect(lifecycle.ResolveVendor(got)).To(Equal("nvidia"))
+
+		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme}
+		_, err := lcm.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: good.GetName()},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		got = getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: good.GetName()})
+		cond := conditionByType(got, lifecycle.SupportedConditionType)
+		Expect(cond).NotTo(BeNil())
+		Expect(cond["reason"]).To(Equal(string(lifecycle.SkewSupported)))
+
+		for _, evil := range []string{"acme", "../../../etc/passwd", "nvidia;id", "https://evil.example"} {
+			bad := &unstructured.Unstructured{Object: map[string]any{
+				"spec": map[string]any{"vendor": evil, "logLevel": int64(2)},
+			}}
+			bad.SetGroupVersionKind(lifecycle.DpuOperatorConfigGVK)
+			bad.SetName(fmt.Sprintf("evil-vendor-%d", time.Now().UnixNano()))
+			err := k8sClient.Create(ctx, bad)
+			Expect(err).To(HaveOccurred(), "spec.vendor %q must be rejected by the CRD enum", evil)
+			Expect(err.Error()).To(Or(
+				ContainSubstring("vendor"),
+				ContainSubstring("Unsupported value"),
+				ContainSubstring("Invalid value"),
+			))
+		}
+
+		ann := &unstructured.Unstructured{Object: map[string]any{
+			"spec": map[string]any{"logLevel": int64(2)},
+		}}
+		ann.SetGroupVersionKind(lifecycle.DpuOperatorConfigGVK)
+		ann.SetName(fmt.Sprintf("ann-nvidia-%d", time.Now().UnixNano()))
+		ann.SetAnnotations(map[string]string{
+			lifecycle.VendorAnnotation:  "nvidia",
+			lifecycle.VersionAnnotation: "v26.4.0",
+		})
+		Expect(k8sClient.Create(ctx, ann)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, ann) })
+		Expect(lifecycle.ResolveVendor(getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: ann.GetName()}))).To(Equal("nvidia"))
 	})
 })

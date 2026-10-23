@@ -158,12 +158,25 @@ type StatusMapping struct {
 	// roll-up over zero children and parks a False condition on hardware it
 	// owns nothing of. Set it to the same vendor guard the emits use.
 	When string `json:"when,omitempty" yaml:"when,omitempty"`
+	// Schema says whether the source CRD keeps status.conditions.
+	// "conditions": the apiserver stores the write (DataProcessingUnit).
+	// "pruned": the CRD status is an empty object;
+	// the controller skips Status().Update until upstream adds conditions.
+	Schema string `json:"schema,omitempty" yaml:"schema,omitempty"`
 	// Fields write computed values onto the source, addressed by dotted path
 	// rooted at the object (e.g. status.observedServices).
 	Fields []Field `json:"fields,omitempty" yaml:"fields,omitempty"`
 	// Conditions are metav1-style conditions upserted onto status.conditions.
 	Conditions []StatusCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 }
+
+const (
+	// StatusSchemaConditions means the source CRD declares status.conditions.
+	StatusSchemaConditions = "conditions"
+	// StatusSchemaPruned means the source CRD status object has no properties,
+	// so a condition write is dropped by the apiserver.
+	StatusSchemaPruned = "pruned"
+)
 
 // StatusCondition is one mirrored condition. Status is a CEL expression that
 // must evaluate to bool; Type/Reason/Message are literals.
@@ -235,6 +248,17 @@ func (s *Spec) Validate() error {
 				return fmt.Errorf("status.conditions[%d].type must not be %q: that condition "+
 					"is owned by the dpu-operator daemon; use a vendor-scoped type "+
 					"(e.g. DPFReady, DSCReady)", i, ReservedConditionType)
+			}
+		}
+		if len(s.Status.Conditions) > 0 {
+			switch s.Status.Schema {
+			case StatusSchemaConditions, StatusSchemaPruned:
+			case "":
+				return fmt.Errorf("status.schema is required when status.conditions is set: %q (CRD keeps the write) or %q (CRD would prune it)",
+					StatusSchemaConditions, StatusSchemaPruned)
+			default:
+				return fmt.Errorf("status.schema %q is not %q or %q",
+					s.Status.Schema, StatusSchemaConditions, StatusSchemaPruned)
 			}
 		}
 	}

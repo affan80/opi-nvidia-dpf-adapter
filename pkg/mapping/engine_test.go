@@ -250,6 +250,7 @@ func statusSpec() *Spec {
 			Fields: []Field{{To: "spec.paused", Value: false}},
 		}},
 		Status: &StatusMapping{
+			Schema: StatusSchemaConditions,
 			Fields: []Field{{To: "status.observedServices", CEL: "children.size()"}},
 			Conditions: []StatusCondition{{
 				// Vendor-scoped, not "Ready": Validate reserves that type for
@@ -489,5 +490,45 @@ func TestShippedVendorMappingsGateTheirStatus(t *testing.T) {
 					tc.mapping, st, tc.foreignProduct)
 			}
 		})
+	}
+}
+
+// TestAMDMappingRequiresSerial is the fake-device guard: a Pensando product
+// name without a board serial must not emit DSC* objects or write DSCReady.
+func TestAMDMappingRequiresSerial(t *testing.T) {
+	specs, err := LoadDir(mappingDir)
+	if err != nil {
+		t.Fatalf("LoadDir: %v", err)
+	}
+	var spec *Spec
+	for _, s := range specs {
+		if s.Metadata.Name == "amd-dsc200" {
+			spec = s
+			break
+		}
+	}
+	if spec == nil {
+		t.Fatal("amd-dsc200 mapping not shipped")
+	}
+	src := map[string]any{
+		"metadata": map[string]any{"name": "no-serial", "namespace": "opi"},
+		"spec": map[string]any{
+			"dpuProductName": "Pensando DSC2-100 100G 2p QSFP56 DPU",
+			"nodeName":       "dh2",
+		},
+	}
+	objs, err := Apply(spec, src)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(objs) != 0 {
+		t.Errorf("emitted %d AMD object(s) without a serial; that is a fake device", len(objs))
+	}
+	st, err := ApplyStatus(spec, src, nil)
+	if err != nil {
+		t.Fatalf("ApplyStatus: %v", err)
+	}
+	if st != nil {
+		t.Errorf("wrote status %#v onto a card with no serial", st)
 	}
 }

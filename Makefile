@@ -51,6 +51,10 @@ generate-rbac: ## Generate the translation controller's RBAC markers from config
 verify-rbac: ## Fail if the generated RBAC markers are stale.
 	go run ./hack/gen-rbac -check
 
+.PHONY: verify-api
+verify-api: ## Fail if mappings write fields the pinned CRDs do not have.
+	go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run 'TestMappingFieldsExistInVendoredCRDs|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
+
 .PHONY: manifests
 manifests: generate-rbac controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	"$(CONTROLLER_GEN)" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
@@ -117,7 +121,7 @@ check-no-lab-details: ## Fail if private lab details or real serials are tracked
 	./hack/check-no-lab-details.sh
 
 .PHONY: lint
-lint: check-no-lab-details verify-rbac golangci-lint ## Run golangci-lint linter
+lint: check-no-lab-details verify-rbac verify-api golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
 
 .PHONY: lint-fix

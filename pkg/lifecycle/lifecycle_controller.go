@@ -43,20 +43,13 @@ var DpuOperatorConfigGVK = schema.GroupVersionKind{
 	Kind:    "DpuOperatorConfig",
 }
 
-// vendorField is where the requested vendor is read from on the config. The
-// current upstream DpuOperatorConfig has no vendor field, so the apiserver
-// prunes it: this is the agreed convention the LCM will honor once the upstream
-// API carries it, and it keeps precedence over the annotation below so the
-// spec field wins the day it lands.
+// vendorField is the constrained enablement field on DpuOperatorConfig
+// (enum nvidia|amd on the pinned OPI fixture). It wins over the annotation.
 var vendorField = []string{"spec", "vendor"}
 
-// VendorAnnotation is how the vendor is requested until spec.vendor exists.
-//
-// Without it the LCM is unreachable on a real cluster: the apiserver prunes an
-// unknown spec field, so spec.vendor always reads empty, the reconcile
-// short-circuits, and no version skew is ever reported. The conformance suite
-// caught exactly that -- it runs against a real apiserver, where pruning
-// happens, rather than a fake client that keeps whatever it is handed.
+// VendorAnnotation is the dual enablement path. spec.vendor is now on the
+// pinned CRD; the annotation stays so clusters that have not rolled the
+// fixture still enable NVIDIA. Both paths go through SanitizeVendorToken.
 const VendorAnnotation = "lifecycle.opi.nvidia.com/vendor"
 
 // VersionAnnotation declares the installed vendor-operator version when the
@@ -110,16 +103,24 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
-	// spec.vendor first (the future upstream field), annotation as the fallback
-	// that actually survives CRD pruning today.
-	vendor, _, _ := unstructured.NestedString(cfg.Object, vendorField...)
-	if vendor == "" {
-		vendor = cfg.GetAnnotations()[VendorAnnotation]
-	}
+	// spec.vendor first (enum on the pinned CRD), annotation as the
+	// fallback. Both are sanitized: a path, URL, or shell fragment is
+	// not a vendor name and becomes UnknownVendor.
+	vendor := ResolveVendor(cfg)
 	if vendor == "" {
 		log.Info("DpuOperatorConfig has no requested vendor; nothing to install",
 			"config", req.NamespacedName,
-			"hint", "set spec.vendor or the "+VendorAnnotation+" annotation")
+			"hint", "set spec.vendor or the "+VendorAnnotation+" annotation to nvidia or amd")
+		return ctrl.Result{}, nil
+	}
+	if !KnownVendor(vendor) {
+		log.Info("rejecting unknown vendor",
+			"vendor", vendor,
+			"allowed", strings.Join(KnownVendors, ","),
+			"config", req.NamespacedName)
+		if err := r.setSkewCondition(ctx, cfg, vendor, "", SkewUnknownVendor); err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -211,6 +212,9 @@ func skewStatus(vendor, installed string, skew Skew) (status, message string) {
 			vendor, installed, r.MinInclusive, r.MaxExclusive)
 	case SkewUnpinned:
 		return "Unknown", fmt.Sprintf("no supported version range is pinned for vendor %q", vendor)
+	case SkewUnknownVendor:
+		return "False", fmt.Sprintf("vendor %q is not known; allowed values are %s",
+			vendor, strings.Join(KnownVendors, ", "))
 	default:
 		if strings.TrimSpace(installed) == "" {
 			return "Unknown", fmt.Sprintf(
@@ -220,6 +224,25 @@ func skewStatus(vendor, installed string, skew Skew) (status, message string) {
 		return "Unknown", fmt.Sprintf("could not parse the installed %s operator version %q",
 			vendor, installed)
 	}
+}
+
+// ResolveVendor reads the enablement contract from a DpuOperatorConfig.
+// spec.vendor wins; the annotation is the fallback. Invalid tokens
+// (paths, URLs, injection) become "invalid" so KnownVendor rejects them
+// without echoing the raw string.
+func ResolveVendor(cfg *unstructured.Unstructured) string {
+	if cfg == nil {
+		return ""
+	}
+	vendor, _, _ := unstructured.NestedString(cfg.Object, vendorField...)
+	if vendor == "" {
+		vendor = cfg.GetAnnotations()[VendorAnnotation]
+	}
+	token, ok := SanitizeVendorToken(vendor)
+	if !ok {
+		return "invalid"
+	}
+	return token
 }
 
 // SetupWithManager wires the LCM to watch DpuOperatorConfig.

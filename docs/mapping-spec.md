@@ -88,7 +88,9 @@ Defaults (`value: true` on `spec.nodeEffect.noEffect`) are how the adapter fills
 
 A single OPI `DataProcessingUnit` cannot become a single DPF `DPU`. `dpuDeviceName`, `dpuFlavor`, and `bfb` are required references. The mapping file therefore has four `emit` entries. Adding a fifth DPF object is another YAML block, not another reconciler.
 
-`forEach` is the same idea for lists: one `ServiceFunctionChain` emits one `DPUService` per `networkFunctions[]` entry that has a chart.
+`forEach` is the same idea for lists: one `ServiceFunctionChain` emits one
+`DPUService` and one `DPUServiceInterface` per chart `networkFunctions[]`
+entry, plus a single `DPUServiceChain`. It does not emit `DPUDeployment`.
 
 ## What the Go code is allowed to do
 
@@ -144,6 +146,13 @@ status:
 nothing is mirrored at all — no conditions, no fields. Set it to the same guard
 your `emit` rules use, or a mapping that emits nothing for a card will still
 write a `False` condition onto it.
+
+`status.schema` is `conditions` or `pruned`. `conditions` means the source CRD
+keeps `status.conditions` (DataProcessingUnit). `pruned` means the CRD status
+is an empty object (ServiceFunctionChain today); the controller skips
+`Status().Update` so the apiserver does not silently drop `DPFReady`.
+`config/condition-writers.yaml` is the assigned-writer table: one row per
+(object, type), `Ready` always `vsp-opi-daemon`.
 
 Each `conditions[]` entry's `status` is a CEL expression that must evaluate to
 bool; `type`, `reason`, and `message` are literals. Write null-safe CEL

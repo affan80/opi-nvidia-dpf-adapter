@@ -141,7 +141,9 @@ var _ = Describe("Reconciler owner references", func() {
 
 	Describe("Reconcile", func() {
 		It("emits DPUService objects owned by the parent ServiceFunctionChain", func() {
-			scheme := testScheme(sfcGVK, svcGVK)
+			ifcGVK := schema.GroupVersionKind{Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceInterface"}
+			chainGVK := schema.GroupVersionKind{Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceChain"}
+			scheme := testScheme(sfcGVK, svcGVK, ifcGVK, chainGVK)
 			src := &unstructured.Unstructured{Object: map[string]any{
 				"spec": map[string]any{
 					"networkFunctions": []any{
@@ -167,10 +169,19 @@ var _ = Describe("Reconciler owner references", func() {
 			_, err := r.Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 
-			got := &unstructured.Unstructured{}
-			got.SetGroupVersionKind(svcGVK)
-			Expect(cl.Get(ctx, types.NamespacedName{Name: "hbn", Namespace: "default"}, got)).To(Succeed())
-			ownerOf(got, "ServiceFunctionChain", "chain-1", "sfc-uid-1")
+			for _, child := range []struct {
+				gvk  schema.GroupVersionKind
+				name string
+			}{
+				{svcGVK, "hbn"},
+				{ifcGVK, "hbn-ifc"},
+				{chainGVK, "chain-1"},
+			} {
+				got := &unstructured.Unstructured{}
+				got.SetGroupVersionKind(child.gvk)
+				Expect(cl.Get(ctx, types.NamespacedName{Name: child.name, Namespace: "default"}, got)).To(Succeed(), child.name)
+				ownerOf(got, "ServiceFunctionChain", "chain-1", "sfc-uid-1")
+			}
 		})
 
 		It("emits DPUDevice objects owned by the parent DataProcessingUnit", func() {

@@ -33,3 +33,6 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# Live lab CRD dumps. They contain host addresses.
+evidence/lab-api-schema/

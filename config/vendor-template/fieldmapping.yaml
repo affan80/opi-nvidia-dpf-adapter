@@ -110,6 +110,7 @@ status:
   # emits nothing for a card must also mirror nothing, or it parks a False
   # condition on hardware it has no claim to.
   when: "source.spec.?dpuProductName.orValue('').matches('EV100|ExampleVendor')"
+  schema: conditions
   conditions:
     - type: EVReady
       status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).size() == 0 || c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True'))"

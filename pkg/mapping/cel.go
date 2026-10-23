@@ -18,9 +18,11 @@ package mapping
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types/ref"
 )
 
 var (
@@ -71,7 +73,71 @@ func evalCEL(expr string, vars map[string]any) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cel eval %q: %w", expr, err)
 	}
-	return out.Value(), nil
+	return celNative(out), nil
+}
+
+// celNative unwraps CEL list/map/string wrappers so unstructured JSON
+// (and SSA) sees []any / map[string]any, not ref.Val.
+func celNative(v any) any {
+	if rv, ok := v.(ref.Val); ok {
+		if n, err := rv.ConvertToNative(reflect.TypeOf([]any{})); err == nil {
+			return celNative(n)
+		}
+		if n, err := rv.ConvertToNative(reflect.TypeOf(map[string]any{})); err == nil {
+			return celNative(n)
+		}
+		if n, err := rv.ConvertToNative(reflect.TypeOf("")); err == nil {
+			return n
+		}
+		if n, err := rv.ConvertToNative(reflect.TypeOf(false)); err == nil {
+			return n
+		}
+		if n, err := rv.ConvertToNative(reflect.TypeOf(int64(0))); err == nil {
+			return n
+		}
+		if n, err := rv.ConvertToNative(reflect.TypeOf(float64(0))); err == nil {
+			return n
+		}
+		inner := rv.Value()
+		if inner == nil || inner == v || inner == rv {
+			return inner
+		}
+		return celNative(inner)
+	}
+	switch t := v.(type) {
+	case []any:
+		out := make([]any, len(t))
+		for i, x := range t {
+			out[i] = celNative(x)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, x := range t {
+			out[k] = celNative(x)
+		}
+		return out
+	}
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() {
+		return v
+	}
+	switch rv.Kind() {
+	case reflect.Slice:
+		out := make([]any, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out[i] = celNative(rv.Index(i).Interface())
+		}
+		return out
+	case reflect.Map:
+		out := make(map[string]any, rv.Len())
+		for _, k := range rv.MapKeys() {
+			out[fmt.Sprint(celNative(k.Interface()))] = celNative(rv.MapIndex(k).Interface())
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func evalBool(expr string, vars map[string]any) (bool, error) {

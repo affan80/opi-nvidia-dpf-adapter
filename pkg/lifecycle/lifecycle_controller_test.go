@@ -56,7 +56,7 @@ func TestLifecycleReconcile(t *testing.T) {
 		obj   *unstructured.Unstructured
 		reqNN types.NamespacedName
 	}{
-		{"with vendor", newConfig("cfg-dpf", map[string]any{"vendor": "dpf"}), types.NamespacedName{Name: "cfg-dpf"}},
+		{"with vendor", newConfig("cfg-nvidia", map[string]any{"vendor": "nvidia"}), types.NamespacedName{Name: "cfg-nvidia"}},
 		{"no vendor", newConfig("cfg-empty", map[string]any{"logLevel": int64(2)}), types.NamespacedName{Name: "cfg-empty"}},
 		{"missing object", newConfig("placeholder", map[string]any{}), types.NamespacedName{Name: "does-not-exist"}},
 	}
@@ -112,12 +112,13 @@ func TestLifecycleReportsVersionSkew(t *testing.T) {
 		name, vendor, installed string
 		wantStatus, wantReason  string
 	}{
-		{"supported", "nvidia", "v25.4.0", "True", string(SkewSupported)},
-		{"too old", "nvidia", "v24.1.0", "False", string(SkewTooOld)},
-		{"too new", "nvidia", "v26.1.0", "False", string(SkewTooNew)},
+		{"supported", "nvidia", "v26.4.0", "True", string(SkewSupported)},
+		{"too old", "nvidia", "v25.4.0", "False", string(SkewTooOld)},
+		{"too new", "nvidia", "v27.1.0", "False", string(SkewTooNew)},
 		{"unparseable", "nvidia", "latest", "Unknown", string(SkewUnknown)},
 		{"absent annotation", "nvidia", "", "Unknown", string(SkewUnknown)},
 		{"vendor with no pinned window", "amd", "v1.46.0", "Unknown", string(SkewUnpinned)},
+		{"unknown vendor is rejected", "acme", "v1.0.0", "False", string(SkewUnknownVendor)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			obj := configWithVersion("cfg", tc.vendor, tc.installed)
@@ -164,7 +165,7 @@ func TestLifecycleReportsVersionSkew(t *testing.T) {
 // field meaningless and generate endless status writes.
 func TestLifecycleSkewConditionIsStable(t *testing.T) {
 	sch := lcmScheme()
-	obj := configWithVersion("cfg", "nvidia", "v25.4.0")
+	obj := configWithVersion("cfg", "nvidia", "v26.4.0")
 	cl := fake.NewClientBuilder().WithScheme(sch).
 		WithObjects(obj).WithStatusSubresource(obj).Build()
 	clock := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -300,9 +301,8 @@ func TestLifecycleSkewPreservesTransitionTimeAcrossReasonChange(t *testing.T) {
 
 // TestLifecycleVendorResolutionPrecedence pins how the vendor is resolved.
 //
-// spec.vendor must win so the LCM needs no change the day upstream adds the
-// field, but the annotation has to work today: the current CRD has no such
-// field, so a real apiserver prunes it and spec.vendor always reads empty.
+// spec.vendor must win over the annotation. The annotation remains the
+// fallback for clusters that have not rolled the pinned CRD.
 func TestLifecycleVendorResolutionPrecedence(t *testing.T) {
 	sch := lcmScheme()
 	for _, tc := range []struct {
@@ -356,6 +356,58 @@ func TestLifecycleVendorResolutionPrecedence(t *testing.T) {
 // TestLifecycleNoVendorPublishesNothing keeps the no-op path a no-op: with
 // neither source set there is nothing to report, and inventing a condition
 // would imply the LCM had checked something.
+func TestResolveVendorPrefersSpecThenAnnotation(t *testing.T) {
+	obj := newConfig("cfg", map[string]any{"vendor": "nvidia"})
+	obj.SetAnnotations(map[string]string{VendorAnnotation: "amd"})
+	if got := ResolveVendor(obj); got != "nvidia" {
+		t.Errorf("ResolveVendor = %q, want nvidia (spec wins)", got)
+	}
+	obj = newConfig("cfg", map[string]any{})
+	obj.SetAnnotations(map[string]string{VendorAnnotation: " nvidia "})
+	if got := ResolveVendor(obj); got != "nvidia" {
+		t.Errorf("ResolveVendor = %q, want trimmed nvidia", got)
+	}
+	if got := ResolveVendor(newConfig("cfg", map[string]any{"logLevel": int64(2)})); got != "" {
+		t.Errorf("ResolveVendor empty config = %q", got)
+	}
+	evil := newConfig("cfg", map[string]any{})
+	evil.SetAnnotations(map[string]string{VendorAnnotation: "../../../etc/passwd"})
+	if got := ResolveVendor(evil); got != "invalid" {
+		t.Errorf("ResolveVendor injection = %q, want invalid (do not echo the raw string)", got)
+	}
+}
+
+func TestLifecycleRejectsUnknownVendor(t *testing.T) {
+	sch := lcmScheme()
+	obj := newConfig("cfg", map[string]any{})
+	obj.SetAnnotations(map[string]string{VendorAnnotation: "acme"})
+	cl := fake.NewClientBuilder().WithScheme(sch).
+		WithObjects(obj).WithStatusSubresource(obj).Build()
+	r := &LifecycleManager{Client: cl, Scheme: sch}
+
+	nn := types.NamespacedName{Name: "cfg"}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: nn}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got := &unstructured.Unstructured{}
+	got.SetGroupVersionKind(DpuOperatorConfigGVK)
+	if err := cl.Get(context.Background(), nn, got); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	cond := conditionOfType(t, got, SupportedConditionType)
+	if cond == nil {
+		t.Fatal("unknown vendor produced no condition; rejection is invisible")
+	}
+	if cond["status"] != "False" || cond["reason"] != string(SkewUnknownVendor) {
+		t.Errorf("got status=%v reason=%v, want False/%s",
+			cond["status"], cond["reason"], SkewUnknownVendor)
+	}
+	if c := conditionOfType(t, got, "Ready"); c != nil {
+		t.Errorf("LCM wrote Ready while rejecting a vendor: %v", c)
+	}
+}
+
 func TestLifecycleNoVendorPublishesNothing(t *testing.T) {
 	sch := lcmScheme()
 	obj := newConfig("cfg", map[string]any{"logLevel": int64(2)})

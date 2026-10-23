@@ -30,7 +30,7 @@ import (
 // release that renames a field or bumps a CRD version turns every translation
 // into a silent no-op or an apply error, and the only symptom is objects that
 // never become ready. Detecting it is the difference between "the adapter says
-// DPF 26.4 is newer than it supports" and an afternoon of debugging.
+// DPF 27 is newer than it supports" and an afternoon of debugging.
 type Skew string
 
 const (
@@ -47,6 +47,9 @@ const (
 	SkewUnknown Skew = "Unknown"
 	// SkewUnpinned means the vendor has no declared support window here.
 	SkewUnpinned Skew = "Unpinned"
+	// SkewUnknownVendor means the requested vendor is not nvidia or amd.
+	// Distinct from Unpinned: amd is known and unpinned; acme is rejected.
+	SkewUnknownVendor Skew = "UnknownVendor"
 )
 
 // SupportedRange is a half-open version window: MinInclusive <= v < MaxExclusive.
@@ -61,11 +64,53 @@ type SupportedRange struct {
 // change that updates the vendored CRDs under test/ -- the window is a claim
 // about what the conformance suite ran against, not an aspiration.
 var supportedVersions = map[string]SupportedRange{
-	// NVIDIA DPF (doca-platform).
-	"nvidia": {MinInclusive: "v25.1.0", MaxExclusive: "v26.0.0"},
+	// NVIDIA DPF (doca-platform). Window is the release whose CRDs the
+	// mappings were compared to (config/versions.yaml, test/e2e/crds/dpf).
+	// v26.4.0 is what dh2 runs (dpf-system:v26.4.0). The previous [v25.1.0,
+	// v26.0.0) window would have classified that install as TooNew.
+	"nvidia": {MinInclusive: "v26.4.0", MaxExclusive: "v27.0.0"},
 	// AMD Pensando has no published operator to pin yet; see
 	// docs/multi-vendor.md. Absent from this map on purpose, which classifies
 	// as SkewUnpinned rather than pretending a window is known.
+}
+
+// KnownVendors is the enablement allow-list. The CRD enum covers spec.vendor;
+// the annotation is still free-form, so the LCM rejects anything outside this set.
+var KnownVendors = []string{"nvidia", "amd"}
+
+const maxVendorToken = 16
+
+// SanitizeVendorToken lowercases and trims a vendor string. Empty is "no
+// vendor". Tokens that are not [a-z][a-z0-9-]{0,15} return ok=false so the
+// LCM can reject them without echoing a path, URL, or shell fragment into
+// conditions or logs.
+func SanitizeVendorToken(raw string) (token string, ok bool) {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "" {
+		return "", true
+	}
+	if len(v) > maxVendorToken {
+		return "", false
+	}
+	for i, r := range v {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case i > 0 && (r >= '0' && r <= '9' || r == '-'):
+		default:
+			return "", false
+		}
+	}
+	return v, true
+}
+
+// KnownVendor reports whether vendor is on the allow-list.
+func KnownVendor(vendor string) bool {
+	switch strings.ToLower(strings.TrimSpace(vendor)) {
+	case "nvidia", "amd":
+		return true
+	default:
+		return false
+	}
 }
 
 // SupportedRangeFor reports the pinned window for a vendor, if there is one.

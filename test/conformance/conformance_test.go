@@ -94,7 +94,7 @@ const (
 
 var cases = []conformanceCase{
 	{
-		name:        "ServiceFunctionChain → DPUService",
+		name:        "ServiceFunctionChain → DPUService + DPUServiceInterface + DPUServiceChain",
 		mappingName: "servicefunctionchain",
 		srcGVK:      sfcGVK,
 		srcNN:       types.NamespacedName{Name: "conf-chain", Namespace: "default"},
@@ -113,9 +113,30 @@ spec:
       version: v25.10.1
 `,
 		children: []childSpec{
-			{gvk: svcGVK, name: "hbn", ns: "default", setReady: true},
+			{
+				gvk: svcGVK, name: "hbn", ns: "default", setReady: true,
+				wantFields: map[string]any{
+					"spec.serviceID":                "hbn",
+					"spec.helmChart.source.repoURL": "https://helm.ngc.nvidia.com/nvidia/doca",
+					"spec.helmChart.source.chart":   "hbn",
+					"spec.helmChart.source.version": "v25.10.1",
+					"spec.security.privileged":      true,
+				},
+			},
+			{
+				gvk: ifcGVK, name: "hbn-ifc", ns: "default", setReady: true,
+				wantFields: map[string]any{
+					"spec.template.spec.template.spec.interfaceType":         "service",
+					"spec.template.spec.template.spec.service.serviceID":     "hbn",
+					"spec.template.spec.template.spec.service.interfaceName": "net0",
+					"spec.template.spec.template.spec.service.network":       "default",
+				},
+			},
+			{
+				gvk: chainGVK, name: "conf-chain", ns: "default", setReady: true,
+			},
 		},
-		statusPruned: true, // SFC CRD status is an empty object; mirror is pruned.
+		statusPruned: false, // pinned OPI SFC CRD now keeps status.conditions.
 	},
 	{
 		name:        "DataProcessingUnit → DPU/DPUDevice/DPUFlavor/BFB",

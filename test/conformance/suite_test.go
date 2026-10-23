@@ -62,6 +62,8 @@ var (
 	sfcGVK    = schema.GroupVersionKind{Group: "config.openshift.io", Version: "v1", Kind: "ServiceFunctionChain"}
 	dpuGVK    = schema.GroupVersionKind{Group: "config.openshift.io", Version: "v1", Kind: "DataProcessingUnit"}
 	svcGVK    = schema.GroupVersionKind{Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUService"}
+	ifcGVK    = schema.GroupVersionKind{Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceInterface"}
+	chainGVK  = schema.GroupVersionKind{Group: "svc.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUServiceChain"}
 	devGVK    = schema.GroupVersionKind{Group: "provisioning.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUDevice"}
 	flavorGVK = schema.GroupVersionKind{Group: "provisioning.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUFlavor"}
 	bfbGVK    = schema.GroupVersionKind{Group: "provisioning.dpu.nvidia.com", Version: "v1alpha1", Kind: "BFB"}
@@ -189,14 +191,15 @@ var _ = AfterSuite(func() {
 	Eventually(func() error { return testEnv.Stop() }, time.Minute, time.Second).Should(Succeed())
 })
 
-// siblingCRDDirs returns the OPI/DPF CRD base directories in the sibling repos.
-// The workspace root is three levels above this package (test/conformance).
+// siblingCRDDirs returns the pinned OPI/DPF CRD fixtures. Conformance must
+// exercise the contract in config/versions.yaml, not whatever sibling
+// checkout is on disk (upstream main still lacks spec.vendor and SFC
+// status.conditions).
 func siblingCRDDirs() []string {
-	ws, _ := filepath.Abs(filepath.Join("..", "..", ".."))
+	root := filepath.Join("..", "..")
 	return []string{
-		filepath.Join(ws, "dpu-operator", "config", "crd", "bases"),
-		filepath.Join(ws, "doca-platform", "config", "dpuservice", "crd", "bases"),
-		filepath.Join(ws, "doca-platform", "config", "provisioning", "crd", "bases"),
+		filepath.Join(root, "test", "e2e", "crds", "opi"),
+		filepath.Join(root, "test", "e2e", "crds", "dpf"),
 	}
 }
 

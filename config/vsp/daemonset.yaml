@@ -1,6 +1,7 @@
 # Local-dev DaemonSet. On kind there is no BlueField; the mock enumerator
 # stamps --serial-number onto every DataProcessingUnit whose spec.nodeName
-# matches this node. Replace the mock flags with --pci on real hardware.
+# matches this node. On a real BlueField apply config/overlays/hardware-vsp
+# (--pci, host /sys, socket at /var/run/dpu-daemon).
 #
 # Restricted PSS: no hostNetwork, drop ALL, read-only root, emptyDir for
 # the vendor-plugin unix socket. Kind's control-plane taint is tolerated

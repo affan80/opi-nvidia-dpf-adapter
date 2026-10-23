@@ -226,7 +226,8 @@ func TestMappingFieldsExistInVendoredCRDs(t *testing.T) {
 func TestSFCFixturesMatchPinnedHelmChartPatch(t *testing.T) {
 	pin := loadPinnedVersions(t)
 	if pin.OPI.PullRequest == "" || pin.OPI.PatchState != "unmerged" {
-		t.Fatal("SFC chart fields come from unmerged opiproject/dpu-operator#6; pin pullRequest and patchState=unmerged in config/versions.yaml")
+		t.Fatal("SFC chart fields come from unmerged opiproject/dpu-operator#6; " +
+			"pin pullRequest and patchState=unmerged in config/versions.yaml")
 	}
 	if !strings.Contains(pin.OPI.PullRequest, "dpu-operator/pull/6") {
 		t.Errorf("opi.pullRequest = %q, want opiproject/dpu-operator#6", pin.OPI.PullRequest)

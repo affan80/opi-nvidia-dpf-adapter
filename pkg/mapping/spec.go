@@ -254,7 +254,8 @@ func (s *Spec) Validate() error {
 			switch s.Status.Schema {
 			case StatusSchemaConditions, StatusSchemaPruned:
 			case "":
-				return fmt.Errorf("status.schema is required when status.conditions is set: %q (CRD keeps the write) or %q (CRD would prune it)",
+				return fmt.Errorf(
+					"status.schema is required when status.conditions is set: %q (CRD keeps the write) or %q (CRD would prune it)",
 					StatusSchemaConditions, StatusSchemaPruned)
 			default:
 				return fmt.Errorf("status.schema %q is not %q or %q",

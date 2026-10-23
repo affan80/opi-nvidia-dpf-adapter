@@ -35,7 +35,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/mapping"
@@ -61,10 +61,7 @@ func main() {
 		fatalf("loading mappings from %s: %v", mappingDir, err)
 	}
 
-	want, err := render(specs, pkg, mappingDir)
-	if err != nil {
-		fatalf("rendering: %v", err)
-	}
+	want := render(specs, pkg, mappingDir)
 
 	if *check {
 		got, err := os.ReadFile(out)
@@ -95,7 +92,7 @@ type rule struct {
 	verbs     string
 }
 
-func render(specs []*mapping.Spec, pkg, mappingDir string) ([]byte, error) {
+func render(specs []*mapping.Spec, pkg, mappingDir string) []byte {
 	// Accumulate per (group, verbs) so one marker covers every resource in a
 	// group, matching how the markers were written by hand.
 	type key struct{ group, verbs string }
@@ -126,16 +123,16 @@ func render(specs []*mapping.Spec, pkg, mappingDir string) ([]byte, error) {
 		for r := range set {
 			res = append(res, r)
 		}
-		sort.Strings(res)
+		slices.Sort(res)
 		rules = append(rules, rule{group: k.group, resources: res, verbs: k.verbs})
 	}
 	// Deterministic output: a generator whose output reorders on every run
 	// produces noise diffs and defeats the -check mode.
-	sort.Slice(rules, func(i, j int) bool {
-		if rules[i].group != rules[j].group {
-			return rules[i].group < rules[j].group
+	slices.SortFunc(rules, func(a, b rule) int {
+		if a.group != b.group {
+			return strings.Compare(a.group, b.group)
 		}
-		return strings.Join(rules[i].resources, ";") < strings.Join(rules[j].resources, ";")
+		return strings.Compare(strings.Join(a.resources, ";"), strings.Join(b.resources, ";"))
 	})
 
 	var b bytes.Buffer
@@ -157,7 +154,7 @@ package %s
 		fmt.Fprintf(&b, "// +kubebuilder:rbac:groups=%s,resources=%s,verbs=%s\n",
 			r.group, strings.Join(r.resources, ";"), r.verbs)
 	}
-	return b.Bytes(), nil
+	return b.Bytes()
 }
 
 // pluralize lowercases a Kind and pluralizes it the way the Kubernetes API

@@ -68,15 +68,24 @@ var supportedVersions = map[string]SupportedRange{
 	// mappings were compared to (config/versions.yaml, test/e2e/crds/dpf).
 	// v26.4.0 is what dh2 runs (dpf-system:v26.4.0). The previous [v25.1.0,
 	// v26.0.0) window would have classified that install as TooNew.
-	"nvidia": {MinInclusive: "v26.4.0", MaxExclusive: "v27.0.0"},
+	VendorNVIDIA: {MinInclusive: nvidiaDPFMin, MaxExclusive: nvidiaDPFMax},
 	// AMD Pensando has no published operator to pin yet; see
 	// docs/multi-vendor.md. Absent from this map on purpose, which classifies
 	// as SkewUnpinned rather than pretending a window is known.
 }
 
+const (
+	// VendorNVIDIA is the DPF enablement token (spec.vendor and annotation).
+	VendorNVIDIA = "nvidia"
+	// VendorAMD is the Pensando enablement token. Known but unpinned.
+	VendorAMD    = "amd"
+	nvidiaDPFMin = "v26.4.0"
+	nvidiaDPFMax = "v27.0.0"
+)
+
 // KnownVendors is the enablement allow-list. The CRD enum covers spec.vendor;
 // the annotation is still free-form, so the LCM rejects anything outside this set.
-var KnownVendors = []string{"nvidia", "amd"}
+var KnownVendors = []string{VendorNVIDIA, VendorAMD}
 
 const maxVendorToken = 16
 
@@ -106,7 +115,7 @@ func SanitizeVendorToken(raw string) (token string, ok bool) {
 // KnownVendor reports whether vendor is on the allow-list.
 func KnownVendor(vendor string) bool {
 	switch strings.ToLower(strings.TrimSpace(vendor)) {
-	case "nvidia", "amd":
+	case VendorNVIDIA, VendorAMD:
 		return true
 	default:
 		return false

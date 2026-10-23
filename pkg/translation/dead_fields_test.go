@@ -28,23 +28,29 @@ func TestUndeclaredFieldPath(t *testing.T) {
 		want string
 	}{
 		{
-			err:  `apply DPUService/hbn: failed to create typed patch object (default/hbn; svc.dpu.nvidia.com/v1alpha1, Kind=DPUService): .spec.security: field not declared in schema`,
+			err: "apply DPUService/hbn: failed to create typed patch object " +
+				"(default/hbn; svc.dpu.nvidia.com/v1alpha1, Kind=DPUService): " +
+				".spec.security: field not declared in schema",
 			want: "spec.security",
 		},
 		{
-			err:  `DPUService in version "v1alpha1" cannot be handled as a DPUService: strict decoding error: unknown field "spec.security"`,
+			err: "DPUService in version \"v1alpha1\" cannot be handled as a DPUService: " +
+				"strict decoding error: unknown field \"spec.security\"",
 			want: "spec.security",
 		},
 		{
-			err:  `DpuOperatorConfig in version "v1" cannot be handled as a DpuOperatorConfig: strict decoding error: unknown field "spec.vendor"`,
+			err: "DpuOperatorConfig in version \"v1\" cannot be handled as a DpuOperatorConfig: " +
+				"strict decoding error: unknown field \"spec.vendor\"",
 			want: "spec.vendor",
 		},
 		{
-			err:  `DPU in version "v1alpha1" cannot be handled as a DPU: strict decoding error: unknown field "spec.astraEnabled"`,
+			err: "DPU in version \"v1alpha1\" cannot be handled as a DPU: " +
+				"strict decoding error: unknown field \"spec.astraEnabled\"",
 			want: "spec.astraEnabled",
 		},
 		{
-			err:  `DPUDevice in version "v1alpha1" cannot be handled as a DPUDevice: strict decoding error: unknown field "spec.cluster"`,
+			err: "DPUDevice in version \"v1alpha1\" cannot be handled as a DPUDevice: " +
+				"strict decoding error: unknown field \"spec.cluster\"",
 			want: "spec.cluster",
 		},
 		{

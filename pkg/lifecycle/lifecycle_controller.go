@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -43,9 +44,14 @@ var DpuOperatorConfigGVK = schema.GroupVersionKind{
 	Kind:    "DpuOperatorConfig",
 }
 
+const (
+	vendorKey = "vendor"
+	statusKey = "status"
+)
+
 // vendorField is the constrained enablement field on DpuOperatorConfig
 // (enum nvidia|amd on the pinned OPI fixture). It wins over the annotation.
-var vendorField = []string{"spec", "vendor"}
+var vendorField = []string{"spec", vendorKey}
 
 // VendorAnnotation is the dual enablement path. spec.vendor is now on the
 // pinned CRD; the annotation stays so clusters that have not rolled the
@@ -115,7 +121,7 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	if !KnownVendor(vendor) {
 		log.Info("rejecting unknown vendor",
-			"vendor", vendor,
+			vendorKey, vendor, //nolint:logcheck // vendorKey is the enablement field name
 			"allowed", strings.Join(KnownVendors, ","),
 			"config", req.NamespacedName)
 		if err := r.setSkewCondition(ctx, cfg, vendor, "", SkewUnknownVendor); err != nil {
@@ -126,7 +132,7 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Placeholder for the real Helm/OLM install-and-pin logic.
 	log.Info("would install and pin the vendor operator (placeholder for Helm/OLM)",
-		"vendor", vendor,
+		vendorKey, vendor, //nolint:logcheck // vendorKey is the enablement field name
 		"config", req.NamespacedName,
 		"action", "ensure-installed-and-pinned")
 
@@ -135,7 +141,7 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// dependency and a mismatch surfaces only as children that never go ready.
 	installed := cfg.GetAnnotations()[VersionAnnotation]
 	skew := ClassifySkew(vendor, installed)
-	log.Info("vendor operator version skew", "vendor", vendor,
+	log.Info("vendor operator version skew", vendorKey, vendor, //nolint:logcheck // vendorKey is the enablement field name
 		"installed", installed, "skew", string(skew))
 
 	if err := r.setSkewCondition(ctx, cfg, vendor, installed, skew); err != nil {
@@ -152,14 +158,14 @@ func (r *LifecycleManager) setSkewCondition(
 ) error {
 	status, message := skewStatus(vendor, installed, skew)
 
-	conds, _, err := unstructured.NestedSlice(cfg.Object, "status", "conditions")
+	conds, _, err := unstructured.NestedSlice(cfg.Object, statusKey, "conditions")
 	if err != nil {
 		return fmt.Errorf("reading status.conditions: %w", err)
 	}
 
 	next := map[string]any{
 		"type":               SupportedConditionType,
-		"status":             status,
+		statusKey:            status,
 		"reason":             string(skew),
 		"message":            message,
 		"lastTransitionTime": r.now().UTC().Format(time.RFC3339),
@@ -171,11 +177,11 @@ func (r *LifecycleManager) setSkewCondition(
 		if !ok || c["type"] != SupportedConditionType {
 			continue
 		}
-		if c["status"] == status && c["reason"] == string(skew) && c["message"] == message {
+		if c[statusKey] == status && c["reason"] == string(skew) && c["message"] == message {
 			// Nothing changed: leave lastTransitionTime and the apiserver alone.
 			return nil
 		}
-		if c["status"] == status {
+		if c[statusKey] == status {
 			next["lastTransitionTime"] = c["lastTransitionTime"]
 		}
 		conds[i] = next
@@ -186,7 +192,7 @@ func (r *LifecycleManager) setSkewCondition(
 		conds = append(conds, next)
 	}
 
-	if err := unstructured.SetNestedSlice(cfg.Object, conds, "status", "conditions"); err != nil {
+	if err := unstructured.SetNestedSlice(cfg.Object, conds, statusKey, "conditions"); err != nil {
 		return fmt.Errorf("setting status.conditions: %w", err)
 	}
 	return r.Status().Update(ctx, cfg)
@@ -200,28 +206,29 @@ func skewStatus(vendor, installed string, skew Skew) (status, message string) {
 	r, _ := SupportedRangeFor(vendor)
 	switch skew {
 	case SkewSupported:
-		return "True", fmt.Sprintf("%s operator %s is within the supported range [%s, %s)",
+		return string(metav1.ConditionTrue), fmt.Sprintf("%s operator %s is within the supported range [%s, %s)",
 			vendor, installed, r.MinInclusive, r.MaxExclusive)
 	case SkewTooOld:
-		return "False", fmt.Sprintf("%s operator %s predates the supported range [%s, %s); "+
+		return string(metav1.ConditionFalse), fmt.Sprintf("%s operator %s predates the supported range [%s, %s); "+
 			"expect fields this adapter writes to be missing",
 			vendor, installed, r.MinInclusive, r.MaxExclusive)
 	case SkewTooNew:
-		return "False", fmt.Sprintf("%s operator %s is newer than the supported range [%s, %s); "+
+		return string(metav1.ConditionFalse), fmt.Sprintf("%s operator %s is newer than the supported range [%s, %s); "+
 			"its CRD schema may have moved since this adapter was tested",
 			vendor, installed, r.MinInclusive, r.MaxExclusive)
 	case SkewUnpinned:
-		return "Unknown", fmt.Sprintf("no supported version range is pinned for vendor %q", vendor)
+		return string(metav1.ConditionUnknown), fmt.Sprintf("no supported version range is pinned for vendor %q", vendor)
 	case SkewUnknownVendor:
-		return "False", fmt.Sprintf("vendor %q is not known; allowed values are %s",
+		return string(metav1.ConditionFalse), fmt.Sprintf("vendor %q is not known; allowed values are %s",
 			vendor, strings.Join(KnownVendors, ", "))
 	default:
 		if strings.TrimSpace(installed) == "" {
-			return "Unknown", fmt.Sprintf(
+			return string(metav1.ConditionUnknown), fmt.Sprintf(
 				"the installed %s operator version is unknown; set the %s annotation",
 				vendor, VersionAnnotation)
 		}
-		return "Unknown", fmt.Sprintf("could not parse the installed %s operator version %q",
+		return string(metav1.ConditionUnknown), fmt.Sprintf(
+			"could not parse the installed %s operator version %q",
 			vendor, installed)
 	}
 }

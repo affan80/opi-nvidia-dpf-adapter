@@ -66,16 +66,16 @@ func TestSchemaMatchesGoStructs(t *testing.T) {
 		def string
 		typ reflect.Type
 	}{
-		{"", reflect.TypeOf(Spec{})},
-		{"metadata", reflect.TypeOf(Metadata{})},
-		{"objectRef", reflect.TypeOf(ObjectRef{})},
-		{"defaults", reflect.TypeOf(Defaults{})},
-		{"emit", reflect.TypeOf(Emit{})},
-		{"forEach", reflect.TypeOf(ForEach{})},
-		{"field", reflect.TypeOf(Field{})},
-		{"value", reflect.TypeOf(Value{})},
-		{"statusMapping", reflect.TypeOf(StatusMapping{})},
-		{"statusCondition", reflect.TypeOf(StatusCondition{})},
+		{"", reflect.TypeFor[Spec]()},
+		{"metadata", reflect.TypeFor[Metadata]()},
+		{"objectRef", reflect.TypeFor[ObjectRef]()},
+		{"defaults", reflect.TypeFor[Defaults]()},
+		{"emit", reflect.TypeFor[Emit]()},
+		{"forEach", reflect.TypeFor[ForEach]()},
+		{"field", reflect.TypeFor[Field]()},
+		{"value", reflect.TypeFor[Value]()},
+		{"statusMapping", reflect.TypeFor[StatusMapping]()},
+		{"statusCondition", reflect.TypeFor[StatusCondition]()},
 	} {
 		name := tc.def
 		if name == "" {
@@ -165,8 +165,7 @@ func TestShippedMappingsDeclareTheSchema(t *testing.T) {
 // ignoring "-" and stripping options like ",omitempty".
 func jsonFieldNames(t reflect.Type) map[string]bool {
 	out := map[string]bool{}
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
+	for f := range t.Fields() {
 		if f.PkgPath != "" {
 			continue // unexported
 		}

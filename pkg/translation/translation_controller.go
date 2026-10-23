@@ -38,6 +38,10 @@ import (
 )
 
 const fieldOwner = "opi-nvidia-dpf-adapter"
+const (
+	statusKey = "status"
+	typeKey   = "type"
+)
 
 // annSource records provenance when Kubernetes GC cannot follow an owner
 // reference (namespaced owner of a cluster-scoped or cross-namespace child).
@@ -165,8 +169,8 @@ func (r *Reconciler) applyOne(ctx context.Context, src, obj *unstructured.Unstru
 	stampOwner(src, obj, r.Scheme)
 	log := logf.FromContext(ctx)
 
-	if schema, err := r.liveCRDSchema(ctx, obj.GroupVersionKind()); err == nil && schema != nil {
-		for _, path := range pruneUnknownSpec(obj, schema) {
+	if crdSchema, err := r.liveCRDSchema(ctx, obj.GroupVersionKind()); err == nil && crdSchema != nil {
+		for _, path := range pruneUnknownSpec(obj, crdSchema) {
 			log.Info("omitted field not on live CRD schema",
 				"kind", obj.GetKind(), "name", obj.GetName(), "field", path)
 		}
@@ -267,7 +271,7 @@ func (r *Reconciler) listChildObjects(
 // upserting conditions by type and preserving lastTransitionTime when a
 // condition's status is unchanged. Returns whether anything changed.
 func applyStatus(src *unstructured.Unstructured, desired map[string]any) bool {
-	cur, _, _ := unstructured.NestedMap(src.Object, "status")
+	cur, _, _ := unstructured.NestedMap(src.Object, statusKey)
 	if cur == nil {
 		cur = map[string]any{}
 	}
@@ -290,7 +294,7 @@ func applyStatus(src *unstructured.Unstructured, desired map[string]any) bool {
 		}
 	}
 	if changed {
-		_ = unstructured.SetNestedMap(src.Object, cur, "status")
+		_ = unstructured.SetNestedMap(src.Object, cur, statusKey)
 	}
 	return changed
 }
@@ -307,7 +311,7 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		if !ok {
 			continue
 		}
-		t, _ := m["type"].(string)
+		t, _ := m[typeKey].(string)
 		byType[t] = m
 		order = append(order, t)
 	}
@@ -319,13 +323,13 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		if !ok {
 			continue
 		}
-		t, _ := dm["type"].(string)
+		t, _ := dm[typeKey].(string)
 		if strings.EqualFold(t, mapping.ReservedConditionType) {
 			// VSP/OPI daemon owns Ready. Never upsert it even if a mapping
 			// slipped past Validate.
 			continue
 		}
-		next := map[string]any{"type": t, "status": dm["status"]}
+		next := map[string]any{typeKey: t, statusKey: dm[statusKey]}
 		if v, ok := dm["reason"]; ok {
 			next["reason"] = v
 		}
@@ -334,7 +338,7 @@ func mergeConditions(existing, desired []any) ([]any, bool) {
 		}
 
 		prev, existed := byType[t]
-		if existed && prev["status"] == dm["status"] {
+		if existed && prev[statusKey] == dm[statusKey] {
 			if ltt, ok := prev["lastTransitionTime"]; ok {
 				next["lastTransitionTime"] = ltt
 			}

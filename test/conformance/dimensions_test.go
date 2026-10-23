@@ -67,7 +67,6 @@ var _ = Describe("Conformance dimension: detection handshake", func() {
 		{"amd", discovery.AMDVendorID, "DSCEXAMPLE0001", "0000:19:00.0", "Pensando DSC2-100 100G 2p QSFP56 DPU"},
 		{"marvell", discovery.MarvellVendorID, "MRVEXAMPLE0001", "0000:07:00.0", "OCTEON-10"},
 	} {
-		tc := tc
 		Context(tc.vendor, func() {
 			It("answers Init, GetDevices and the network-function calls", func() {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -166,7 +165,6 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		{"vendor with no pinned window", "amd", "v1.46.0", "Unknown", string(lifecycle.SkewUnpinned)},
 		{"unknown vendor is rejected", "acme", "v1.0.0", "False", string(lifecycle.SkewUnknownVendor)},
 	} {
-		tc := tc
 		Context(tc.name, func() {
 			It("publishes a vendor-scoped condition and leaves Ready to the daemon", func() {
 				name := fmt.Sprintf("skew-%s-%d", tc.vendor, time.Now().UnixNano())
@@ -224,7 +222,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 
 		nn := types.NamespacedName{Name: name}
 		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme}
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			_, err := lcm.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred(), "reconcile %d", i)
 		}
@@ -291,6 +289,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		})
 		Expect(k8sClient.Create(ctx, ann)).To(Succeed())
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, ann) })
-		Expect(lifecycle.ResolveVendor(getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: ann.GetName()}))).To(Equal("nvidia"))
+		got = getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: ann.GetName()})
+		Expect(lifecycle.ResolveVendor(got)).To(Equal("nvidia"))
 	})
 })

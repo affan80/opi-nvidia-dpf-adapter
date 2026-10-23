@@ -175,7 +175,7 @@ func TestVendorTemplateMirrorsVendorScopedCondition(t *testing.T) {
 func splitPath(p string) []string {
 	var out []string
 	start := 0
-	for i := 0; i < len(p); i++ {
+	for i := range len(p) {
 		if p[i] == '.' {
 			out = append(out, p[start:i])
 			start = i + 1

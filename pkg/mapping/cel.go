@@ -80,22 +80,22 @@ func evalCEL(expr string, vars map[string]any) (any, error) {
 // (and SSA) sees []any / map[string]any, not ref.Val.
 func celNative(v any) any {
 	if rv, ok := v.(ref.Val); ok {
-		if n, err := rv.ConvertToNative(reflect.TypeOf([]any{})); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[[]any]()); err == nil {
 			return celNative(n)
 		}
-		if n, err := rv.ConvertToNative(reflect.TypeOf(map[string]any{})); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[map[string]any]()); err == nil {
 			return celNative(n)
 		}
-		if n, err := rv.ConvertToNative(reflect.TypeOf("")); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[string]()); err == nil {
 			return n
 		}
-		if n, err := rv.ConvertToNative(reflect.TypeOf(false)); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[bool]()); err == nil {
 			return n
 		}
-		if n, err := rv.ConvertToNative(reflect.TypeOf(int64(0))); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[int64]()); err == nil {
 			return n
 		}
-		if n, err := rv.ConvertToNative(reflect.TypeOf(float64(0))); err == nil {
+		if n, err := rv.ConvertToNative(reflect.TypeFor[float64]()); err == nil {
 			return n
 		}
 		inner := rv.Value()
@@ -125,7 +125,7 @@ func celNative(v any) any {
 	switch rv.Kind() {
 	case reflect.Slice:
 		out := make([]any, rv.Len())
-		for i := 0; i < rv.Len(); i++ {
+		for i := range rv.Len() {
 			out[i] = celNative(rv.Index(i).Interface())
 		}
 		return out

@@ -56,7 +56,11 @@ func TestLifecycleReconcile(t *testing.T) {
 		obj   *unstructured.Unstructured
 		reqNN types.NamespacedName
 	}{
-		{"with vendor", newConfig("cfg-nvidia", map[string]any{"vendor": "nvidia"}), types.NamespacedName{Name: "cfg-nvidia"}},
+		{
+			"with vendor",
+			newConfig("cfg-nvidia", map[string]any{"vendor": "nvidia"}),
+			types.NamespacedName{Name: "cfg-nvidia"},
+		},
 		{"no vendor", newConfig("cfg-empty", map[string]any{"logLevel": int64(2)}), types.NamespacedName{Name: "cfg-empty"}},
 		{"missing object", newConfig("placeholder", map[string]any{}), types.NamespacedName{Name: "does-not-exist"}},
 	}
@@ -188,7 +192,7 @@ func TestLifecycleSkewConditionIsStable(t *testing.T) {
 		return c
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: nn}); err != nil {
 			t.Fatalf("Reconcile %d: %v", i, err)
 		}

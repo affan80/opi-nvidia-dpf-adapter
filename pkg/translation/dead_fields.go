@@ -95,15 +95,15 @@ func dropNestedMap(m map[string]any, parts []string) bool {
 	return dropNestedMap(child, parts[1:])
 }
 
-func pruneUnknownSpec(obj *unstructured.Unstructured, schema map[string]any) []string {
-	if obj == nil || obj.Object == nil || schema == nil {
+func pruneUnknownSpec(obj *unstructured.Unstructured, crdSchema map[string]any) []string {
+	if obj == nil || obj.Object == nil || crdSchema == nil {
 		return nil
 	}
 	spec, ok := obj.Object["spec"].(map[string]any)
 	if !ok {
 		return nil
 	}
-	specSchema := nestedSchema(schema, "spec")
+	specSchema := nestedSchema(crdSchema, "spec")
 	if specSchema == nil {
 		return nil
 	}
@@ -119,24 +119,24 @@ func nestedSchema(root map[string]any, name string) map[string]any {
 	return child
 }
 
-func preserveUnknown(schema map[string]any) bool {
-	if schema == nil {
+func preserveUnknown(crdSchema map[string]any) bool {
+	if crdSchema == nil {
 		return false
 	}
-	if v, ok := schema["x-kubernetes-preserve-unknown-fields"].(bool); ok && v {
+	if v, ok := crdSchema["x-kubernetes-preserve-unknown-fields"].(bool); ok && v {
 		return true
 	}
-	if _, ok := schema["additionalProperties"]; ok {
+	if _, ok := crdSchema["additionalProperties"]; ok {
 		return true
 	}
 	return false
 }
 
-func pruneMap(m map[string]any, schema map[string]any, prefix string) []string {
-	if preserveUnknown(schema) {
+func pruneMap(m map[string]any, crdSchema map[string]any, prefix string) []string {
+	if preserveUnknown(crdSchema) {
 		return nil
 	}
-	props, _ := schema["properties"].(map[string]any)
+	props, _ := crdSchema["properties"].(map[string]any)
 	if props == nil {
 		return nil
 	}

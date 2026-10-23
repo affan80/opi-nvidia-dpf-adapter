@@ -67,15 +67,9 @@ func TestRenderIsDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDir: %v", err)
 	}
-	first, err := render(specs, "translation", "config/mappings")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := 0; i < 5; i++ {
-		again, err := render(specs, "translation", "config/mappings")
-		if err != nil {
-			t.Fatal(err)
-		}
+	first := render(specs, "translation", "config/mappings")
+	for i := range 5 {
+		again := render(specs, "translation", "config/mappings")
 		if string(again) != string(first) {
 			t.Fatalf("render is not deterministic (run %d differed)", i)
 		}
@@ -89,11 +83,7 @@ func TestRenderCoversEveryMappedGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadDir: %v", err)
 	}
-	out, err := render(specs, "translation", "config/mappings")
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(out)
+	got := string(render(specs, "translation", "config/mappings"))
 
 	for _, s := range specs {
 		// The source kind, its status and its finalizers.
@@ -144,10 +134,7 @@ emit:
 	if err != nil {
 		t.Fatalf("LoadDir: %v", err)
 	}
-	out, err := render(specs, "translation", dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	out := render(specs, "translation", dir)
 	// Note the plural: a new group AND the -ies pluralization, both derived.
 	if !mentionsResource(string(out), "dpu.acme.com", "acmenodepolicies") {
 		t.Errorf("a new vendor's group did not appear in the generated RBAC:\n%s", out)
@@ -158,7 +145,7 @@ emit:
 // Resources are joined with ';' in one marker per group, so a substring check
 // has to respect those boundaries or "dpus" would match "dpuservices".
 func mentionsResource(generated, group, resource string) bool {
-	for _, line := range strings.Split(generated, "\n") {
+	for line := range strings.SplitSeq(generated, "\n") {
 		if !strings.Contains(line, "groups="+group+",") {
 			continue
 		}
@@ -170,7 +157,7 @@ func mentionsResource(generated, group, resource string) bool {
 		if !ok {
 			continue
 		}
-		for _, r := range strings.Split(list, ";") {
+		for r := range strings.SplitSeq(list, ";") {
 			if r == resource {
 				return true
 			}

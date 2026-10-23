@@ -19,6 +19,7 @@ package mapping
 import (
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -27,6 +28,8 @@ const (
 	labelSourceKind = "translation.opi.nvidia.com/source-kind"
 	labelSourceName = "translation.opi.nvidia.com/source-name"
 	labelMapping    = "translation.opi.nvidia.com/mapping"
+	statusKey       = "status"
+	typeKey         = "type"
 )
 
 // Label keys used to locate emitted children for status roll-up. Exported so
@@ -213,7 +216,7 @@ func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]
 	}
 
 	statusMap := map[string]any{}
-	if raw, ok := Get(obj, "status"); ok {
+	if raw, ok := Get(obj, statusKey); ok {
 		if m, ok := asMap(raw); ok {
 			statusMap = m
 		}
@@ -225,11 +228,11 @@ func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]
 		if err != nil {
 			return nil, fmt.Errorf("status condition %s: %w", c.Type, err)
 		}
-		status := "False"
+		status := string(metav1.ConditionFalse)
 		if ok {
-			status = "True"
+			status = string(metav1.ConditionTrue)
 		}
-		cond := map[string]any{"type": c.Type, "status": status}
+		cond := map[string]any{typeKey: c.Type, statusKey: status}
 		if c.Reason != "" {
 			cond["reason"] = c.Reason
 		}

@@ -39,7 +39,8 @@ var requiredDesignSections = []string{
 func TestHybridDesignDocIsTheContract(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "hybrid-integration-design.md"))
 	if err != nil {
-		t.Fatalf("docs/hybrid-integration-design.md missing: %v (TASK 01.06: write the spec before irreversible implementation)", err)
+		t.Fatalf("docs/hybrid-integration-design.md missing: %v "+
+			"(TASK 01.06: write the spec before irreversible implementation)", err)
 	}
 	doc := string(b)
 	if !strings.Contains(doc, "single implementation contract") {

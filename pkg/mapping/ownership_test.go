@@ -18,6 +18,7 @@ package mapping
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -49,26 +50,19 @@ func TestSFCMappingIsDirectOwnership(t *testing.T) {
 		kind := emit.Target.Kind
 		for _, forbidden := range deploymentOwnedKinds {
 			if kind == forbidden {
-				t.Errorf("emit[%d] writes %s; DPF's DPUDeployment controller would also own the resulting DPUService/Interface/Chain",
-					i, kind)
+				t.Errorf("emit[%d] writes %s; DPF's DPUDeployment controller would also own "+
+					"the resulting DPUService/Interface/Chain", i, kind)
 			}
 		}
-		allowed := false
-		for _, want := range directSFCChildren {
-			if kind == want {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
+		if !slices.Contains(directSFCChildren, kind) {
 			t.Errorf("emit[%d] kind %s is not in the direct ownership graph %v", i, kind, directSFCChildren)
 		}
 		if emit.Name.empty() {
 			t.Errorf("emit[%d] %s has no name; the resource graph requires one", i, kind)
 		}
 		if !emit.Namespace.empty() {
-			t.Errorf("emit[%d] %s overrides namespace; children must share defaults.namespace so one owner and one namespace apply",
-				i, kind)
+			t.Errorf("emit[%d] %s overrides namespace; children must share defaults.namespace "+
+				"so one owner and one namespace apply", i, kind)
 		}
 		saw[kind] = true
 	}

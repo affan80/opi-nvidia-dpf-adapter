@@ -1,0 +1,66 @@
+# Independently deployed OPI daemon handshake.
+#
+# Official dpu-operator bindata (99.daemonset.yaml) mounts hostPath
+# /var/run/dpu-daemon Bidirectional so GrpcPlugin can dial
+# vendor-plugin/vendor-plugin.sock. The default VSP emptyDir is
+# invisible to this pod; apply this next to config/overlays/hardware-vsp.
+#
+# This is Init/GetDevices only — not the full CNI/device-plugin daemon.
+# Privileged root matches the official daemon so it can open the 0700
+# socket directory the VSP creates.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: opi-daemon
+  namespace: system
+  labels:
+    app.kubernetes.io/name: opi-nvidia-dpf-adapter
+    app.kubernetes.io/component: opi-daemon
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: opi-daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: opi-daemon
+        app.kubernetes.io/name: opi-nvidia-dpf-adapter
+    spec:
+      serviceAccountName: opi-nvidia-dpf-adapter-nvidia-vsp
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: dpu-daemon
+        image: controller:latest
+        command:
+        - /opi-daemon
+        args:
+        - --grpc-socket=/var/run/dpu-daemon/vendor-plugin/vendor-plugin.sock
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+          readOnlyRootFilesystem: true
+          runAsUser: 0
+          runAsNonRoot: false
+        volumeMounts:
+        - name: dpu-daemon-mount
+          mountPath: /var/run/dpu-daemon
+          mountPropagation: Bidirectional
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
+      volumes:
+      - name: dpu-daemon-mount
+        hostPath:
+          path: /var/run/dpu-daemon
+          type: DirectoryOrCreate

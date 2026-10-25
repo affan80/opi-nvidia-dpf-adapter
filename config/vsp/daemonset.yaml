@@ -1,11 +1,16 @@
 # Local-dev DaemonSet. On kind there is no BlueField; the mock enumerator
 # stamps --serial-number onto every DataProcessingUnit whose spec.nodeName
 # matches this node. On a real BlueField apply config/overlays/hardware-vsp
-# (--pci, host /sys, socket at /var/run/dpu-daemon).
+# (--pci, host /sys, hostPath /var/run/dpu-daemon).
 #
-# Restricted PSS: no hostNetwork, drop ALL, read-only root, emptyDir for
-# the vendor-plugin unix socket. Kind's control-plane taint is tolerated
-# so a one-node cluster still schedules the VSP.
+# Restricted PSS: no hostNetwork, drop ALL, read-only root. The vendor
+# plugin unix socket lives on emptyDir; an independently deployed OPI
+# daemon cannot see that, so opi-daemon runs as a sidecar on the same
+# volume. Hardware overlay drops the sidecar and shares hostPath with
+# config/opi-daemon (official 99.daemonset.yaml mount).
+#
+# Kind's control-plane taint is tolerated so a one-node cluster still
+# schedules the VSP.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -87,6 +92,33 @@ spec:
           requests:
             cpu: 10m
             memory: 32Mi
+      - name: opi-daemon
+        image: controller:latest
+        command:
+        - /opi-daemon
+        args:
+        - --grpc-socket=/var/run/dpu-daemon/vendor-plugin/vendor-plugin.sock
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - name: grpc-socket
+          mountPath: /var/run/dpu-daemon
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 16Mi
       volumes:
       - name: grpc-socket
         emptyDir: {}

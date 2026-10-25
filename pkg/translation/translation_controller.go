@@ -32,6 +32,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/mapping"
@@ -67,6 +68,12 @@ type Reconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Spec   *mapping.Spec
+
+	// TargetsInstalled reports whether every GVK that this reconcile wants
+	// to write is served. Nil skips the check (unit tests with no discovery).
+	// Production wires this to the manager RESTMapper, which is reset when
+	// a lookup misses so a CRD that appeared during LCM install is noticed.
+	TargetsInstalled func(context.Context, []schema.GroupVersionKind) (bool, error)
 
 	schemaMu sync.Mutex
 	schemas  map[schema.GroupVersionKind]map[string]any
@@ -109,6 +116,30 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		log.Error(err, "mapping apply failed")
 		return ctrl.Result{}, err
+	}
+
+	// DPF CRDs show up while the LCM Helm install is still running.
+	// VendorOperatorReady is the signal that the required APIs and
+	// controllers are up (docs/lcm-operator-status.md). Returning a
+	// fixed delay keeps this source queued. An error would use the
+	// rate-limiter's fast first retry. An empty result would drop it
+	// until some other watch fired.
+	if len(emitted) > 0 {
+		wait, err := r.lcmBlocks(ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		apisReady := true
+		if !wait && r.TargetsInstalled != nil {
+			apisReady, err = r.TargetsInstalled(ctx, uniqueGVKs(emitted))
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+		if wait || !apisReady {
+			log.Info("DPF is not ready; source stays queued", "lcm", wait, "apis", apisReady)
+			return ctrl.Result{RequeueAfter: DPFNotReadyRequeue}, nil
+		}
 	}
 
 	for _, obj := range emitted {
@@ -403,16 +434,43 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named(r.Spec.Metadata.Name)
 
 	seen := map[schema.GroupVersionKind]bool{}
+	var targets []schema.GroupVersionKind
 	for _, e := range r.Spec.Emit {
 		gvk := e.Target.GVK()
 		if seen[gvk] {
 			continue
 		}
 		seen[gvk] = true
+		targets = append(targets, gvk)
+	}
+	// Owns() starts an informer. A missing CRD fails cache sync and stops
+	// the whole manager, which drops every source. Own only kinds that
+	// discovery already serves. Kinds that appear later are picked up by
+	// the CRD watch below, which requeues the source.
+	owned, err := ownableTargets(mgr.GetRESTMapper(), targets)
+	if err != nil {
+		return err
+	}
+	ownedSet := map[schema.GroupVersionKind]bool{}
+	for _, gvk := range owned {
+		ownedSet[gvk] = true
 		child := &unstructured.Unstructured{}
 		child.SetGroupVersionKind(gvk)
 		b = b.Owns(child)
 	}
+	for _, gvk := range targets {
+		if !ownedSet[gvk] {
+			ctrl.Log.Info("DPF kind is not installed; not watching it yet",
+				"mapping", r.Spec.Metadata.Name, "gvk", gvk.String())
+		}
+	}
+
+	cfg := &unstructured.Unstructured{}
+	cfg.SetGroupVersionKind(lcmConfigGVK())
+	crd := &unstructured.Unstructured{}
+	crd.SetGroupVersionKind(crdGVK())
+	b = b.Watches(cfg, handler.EnqueueRequestsFromMapFunc(r.enqueueIfLCMReady))
+	b = b.Watches(crd, handler.EnqueueRequestsFromMapFunc(r.enqueueIfTargetCRD))
 	return b.Complete(r)
 }
 

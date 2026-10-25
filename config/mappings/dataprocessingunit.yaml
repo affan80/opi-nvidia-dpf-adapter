@@ -49,29 +49,29 @@ emit:
         value: dpu
       # Official DPF 26.4.0 HBN defaults
       # (https://networking-docs.nvidia.com/dpf/26.4.0/dpuflavor).
-      # Empty nvconfig zeroed PF_TOTAL_SF/PF_SF_BAR_SIZE on dh2 (current
-      # 32/8 → next_boot 0) and left the DPU Rebooting. Annotations
-      # dpu.nvidia.com/pf-total-sf and dpu.nvidia.com/pf-sf-bar-size override
-      # so a recreate can match live firmware and drop reset_needed.
-      # Zero/empty annotations fall back to 20/10. Flavor spec is immutable
-      # — this applies to new/recreated DPUFlavor objects only.
+      # A value that differs from running firmware sets reset_needed and
+      # leaves the DPU in Rebooting until a host power cycle. Annotations
+      # override one parameter so a recreated DPUFlavor can match the card.
+      # SF 0 is rejected (that was the dh2 stall) and falls back to 20/10.
+      # Other parameters keep an explicit 0. Flavor spec is immutable —
+      # this applies to new/recreated DPUFlavor objects only.
       - to: spec.nvconfig
         cel: |
           [{
             "device": "*",
             "parameters": [
-              "PF_BAR2_ENABLE=0",
-              "PER_PF_NUM_SF=1",
+              "PF_BAR2_ENABLE=" + source.metadata.?annotations['dpu.nvidia.com/pf-bar2-enable'].orValue('0'),
+              "PER_PF_NUM_SF=" + source.metadata.?annotations['dpu.nvidia.com/per-pf-num-sf'].orValue('1'),
               "PF_TOTAL_SF=" + (source.metadata.?annotations['dpu.nvidia.com/pf-total-sf'].orValue('20') == '0' ? '20' : source.metadata.?annotations['dpu.nvidia.com/pf-total-sf'].orValue('20')),
               "PF_SF_BAR_SIZE=" + (source.metadata.?annotations['dpu.nvidia.com/pf-sf-bar-size'].orValue('10') == '0' ? '10' : source.metadata.?annotations['dpu.nvidia.com/pf-sf-bar-size'].orValue('10')),
-              "NUM_PF_MSIX_VALID=0",
-              "PF_NUM_PF_MSIX_VALID=1",
-              "PF_NUM_PF_MSIX=228",
+              "NUM_PF_MSIX_VALID=" + source.metadata.?annotations['dpu.nvidia.com/num-pf-msix-valid'].orValue('0'),
+              "PF_NUM_PF_MSIX_VALID=" + source.metadata.?annotations['dpu.nvidia.com/pf-num-pf-msix-valid'].orValue('1'),
+              "PF_NUM_PF_MSIX=" + source.metadata.?annotations['dpu.nvidia.com/pf-num-pf-msix'].orValue('228'),
               "INTERNAL_CPU_MODEL=1",
               "INTERNAL_CPU_OFFLOAD_ENGINE=0",
               "SRIOV_EN=1",
-              "NUM_OF_VFS=46",
-              "LAG_RESOURCE_ALLOCATION=1"
+              "NUM_OF_VFS=" + source.metadata.?annotations['dpu.nvidia.com/num-of-vfs'].orValue('46'),
+              "LAG_RESOURCE_ALLOCATION=" + source.metadata.?annotations['dpu.nvidia.com/lag-resource-allocation'].orValue('1')
             ]
           }]
 
@@ -113,6 +113,7 @@ emit:
       # DPF hostAgent install requires spec.pciAddress (0000-0f-00 form).
       - to: spec.pciAddress
         cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/pci-address'].orValue('')"
+        required: true
       # Literal default: noEffect is the safe local-dev default (no host drain,
       # no taint). This is a plain value, not a CEL-enforced constraint.
       - to: spec.nodeEffect.noEffect
@@ -144,6 +145,7 @@ status:
   # DPFReady=False on hardware this mapping owns nothing of.
   when: "source.spec.?dpuProductName.orValue('BlueField').startsWith('BlueField')"
   # DataProcessingUnit CRD declares status.conditions; DPFReady is stored.
+  # Ready and its schema fields (lastTransitionTime, observedGeneration) stay.
   schema: conditions
   conditions:
     - type: DPFReady

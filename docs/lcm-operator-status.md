@@ -35,6 +35,22 @@ Required NVIDIA look-up:
 AMD has no Helm chart. Ready only if `DSCDevice` exists. Do not apply
 AMD stubs on a BlueField host.
 
+## Translation gate
+
+DPF CRDs are created while the LCM Helm install is still running. A
+source created in that window is not applied and is not dropped.
+
+`pkg/translation` waits when a `DpuOperatorConfig` exists and none of
+them has `VendorOperatorReady` status `True` (`Installing` or
+`Degraded`). It also waits when discovery does not yet serve an emitted
+GVK. The wait is `RequeueAfter` 15s with a nil error, so the work queue
+does not spin. A `VendorOperatorReady=True` transition, or a served
+target CRD, enqueues the source immediately. A stale REST mapper is
+reset once per attempt. Kinds discovery does not serve are not
+`Owns()`'d, so a missing CRD does not fail manager cache sync. A
+mapping that emits nothing (for example a non-BlueField source on the
+NVIDIA mapping) is not requeued.
+
 ## Commands
 
 ```bash

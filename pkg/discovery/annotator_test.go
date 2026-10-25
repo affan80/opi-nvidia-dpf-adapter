@@ -18,6 +18,7 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -109,7 +111,10 @@ func TestAnnotatorSkipsOtherNodes(t *testing.T) {
 func TestAnnotatorIsIdempotent(t *testing.T) {
 	scheme := newDPUScheme(t)
 	dpu := newDPU(testDPUName, testNode)
-	dpu.SetAnnotations(map[string]string{SerialNumberAnnotation: testSerial})
+	dpu.SetAnnotations(map[string]string{
+		SerialNumberAnnotation: testSerial,
+		PCIAddressAnnotation:   DPFPCIAddress(testPCI),
+	})
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dpu).Build()
 
 	a := &Annotator{
@@ -119,8 +124,21 @@ func TestAnnotatorIsIdempotent(t *testing.T) {
 		NodeName:   testNode,
 	}
 
+	first, err := a.Reconcile(context.Background(), requestFor(dpu))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.RequeueAfter != InventoryRefresh {
+		t.Fatalf("refresh must requeue, got %+v", first)
+	}
+	before := getDPU(t, c, testDPUName).GetAnnotations()
 	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err != nil {
 		t.Fatal(err)
+	}
+	after := getDPU(t, c, testDPUName).GetAnnotations()
+	if before[SerialNumberAnnotation] != after[SerialNumberAnnotation] ||
+		before[PCIAddressAnnotation] != after[PCIAddressAnnotation] {
+		t.Fatalf("idempotent refresh changed identity %v -> %v", before, after)
 	}
 }
 
@@ -136,8 +154,153 @@ func TestAnnotatorRejectsEmptySerial(t *testing.T) {
 		NodeName:   testNode,
 	}
 
+	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err != nil {
+		t.Fatal(err)
+	}
+	got := &unstructured.Unstructured{}
+	got.SetGroupVersionKind(DataProcessingUnitGVK)
+	if err := c.Get(context.Background(), types.NamespacedName{Name: testDPUName}, got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.GetAnnotations()) != 0 {
+		t.Fatalf("missing serial must not stamp: %v", got.GetAnnotations())
+	}
+}
+
+func TestAnnotatorClearsStaleIdentityWhenBusEmpty(t *testing.T) {
+	scheme := newDPUScheme(t)
+	dpu := newDPU(testDPUName, testNode)
+	dpu.SetAnnotations(map[string]string{
+		SerialNumberAnnotation: testSerial,
+		PCIAddressAnnotation:   DPFPCIAddress(testPCI),
+		FlavorAnnotation:       testFlavor,
+	})
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dpu).Build()
+	a := &Annotator{
+		Client:     c,
+		Scheme:     scheme,
+		Enumerator: MockEnumerator{},
+		NodeName:   testNode,
+	}
+	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err != nil {
+		t.Fatal(err)
+	}
+	ann := getDPU(t, c, testDPUName).GetAnnotations()
+	if HasIdentity(ann) {
+		t.Fatalf("empty bus must not keep stale identity: %v", ann)
+	}
+	if ann[FlavorAnnotation] != testFlavor {
+		t.Fatalf("firmware is not inventory: %v", ann)
+	}
+}
+
+func TestAnnotatorKeepsStampsWhenEnumerateFails(t *testing.T) {
+	scheme := newDPUScheme(t)
+	dpu := newDPU(testDPUName, testNode)
+	dpu.SetAnnotations(map[string]string{SerialNumberAnnotation: testSerial})
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dpu).Build()
+	a := &Annotator{
+		Client:     c,
+		Scheme:     scheme,
+		Enumerator: &MutableEnumerator{Err: errors.New("sysfs unreadable")},
+		NodeName:   testNode,
+	}
 	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err == nil {
-		t.Fatal("expected error for empty serial")
+		t.Fatal("enumerate error must fail the refresh")
+	}
+	if getDPU(t, c, testDPUName).GetAnnotations()[SerialNumberAnnotation] != testSerial {
+		t.Fatal("a failed scan must not look like a removed card")
+	}
+}
+
+func TestAnnotatorFollowsHardwareChangeAndIgnoresOtherDPU(t *testing.T) {
+	scheme := newDPUScheme(t)
+	dpu := newDPU(testDPUName, testNode)
+	dpu.SetAnnotations(map[string]string{
+		SerialNumberAnnotation: testSerial,
+		PCIAddressAnnotation:   "0000-03-00",
+	})
+	other := newDPU("other-dpu", testNode)
+	other.SetAnnotations(map[string]string{SerialNumberAnnotation: "MTOTHER0002"})
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dpu, other).Build()
+	moved := StaticDevice(NVIDIAVendorID, testSerial, "0000:0f:00.0", testProduct)
+	otherDev := StaticDevice(NVIDIAVendorID, "MTOTHER0002", "0000:1b:00.0", testProduct)
+	a := &Annotator{
+		Client:     c,
+		Scheme:     scheme,
+		Enumerator: MockEnumerator{Devices: []Device{moved, otherDev}},
+		NodeName:   testNode,
+	}
+	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err != nil {
+		t.Fatal(err)
+	}
+	ann := getDPU(t, c, testDPUName).GetAnnotations()
+	if ann[PCIAddressAnnotation] != "0000-0f-00" || ann[SerialNumberAnnotation] != testSerial {
+		t.Fatalf("reboot PCI move = %v", ann)
+	}
+	if getDPU(t, c, "other-dpu").GetAnnotations()[SerialNumberAnnotation] != "MTOTHER0002" {
+		t.Fatal("refresh must not rewrite the other DPU")
+	}
+}
+
+func TestAnnotatorDoesNotStampStolenCardOnStaleDPU(t *testing.T) {
+	scheme := newDPUScheme(t)
+	stale := newDPU("stale-dpu", testNode)
+	stale.SetAnnotations(map[string]string{SerialNumberAnnotation: "MTGONE0001"})
+	live := newDPU("live-dpu", testNode)
+	live.SetAnnotations(map[string]string{SerialNumberAnnotation: testSerial})
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(stale, live).Build()
+	a := &Annotator{
+		Client:     c,
+		Scheme:     scheme,
+		Enumerator: mockDevices(),
+		NodeName:   testNode,
+	}
+	if _, err := a.Reconcile(context.Background(), requestFor(stale)); err != nil {
+		t.Fatal(err)
+	}
+	if HasIdentity(getDPU(t, c, "stale-dpu").GetAnnotations()) {
+		t.Fatalf("stale DPU became a false-positive: %v", getDPU(t, c, "stale-dpu").GetAnnotations())
+	}
+	if getDPU(t, c, "live-dpu").GetAnnotations()[SerialNumberAnnotation] != testSerial {
+		t.Fatal("live DPU identity changed")
+	}
+}
+
+func TestAnnotatorRejectsEmptyPCI(t *testing.T) {
+	scheme := newDPUScheme(t)
+	dpu := newDPU(testDPUName, testNode)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dpu).Build()
+
+	a := &Annotator{
+		Client:     c,
+		Scheme:     scheme,
+		Enumerator: MockEnumerator{Devices: []Device{StaticDevice(NVIDIAVendorID, testSerial, "", testProduct)}},
+		NodeName:   testNode,
+	}
+
+	if _, err := a.Reconcile(context.Background(), requestFor(dpu)); err != nil {
+		t.Fatal(err)
+	}
+	got := &unstructured.Unstructured{}
+	got.SetGroupVersionKind(DataProcessingUnitGVK)
+	if err := c.Get(context.Background(), types.NamespacedName{Name: testDPUName}, got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.GetAnnotations()) != 0 {
+		t.Fatalf("missing PCI must not stamp: %v", got.GetAnnotations())
+	}
+}
+
+func TestValidateIdentity(t *testing.T) {
+	if err := ValidateIdentity(Device{PCIAddress: testPCI, SerialNumber: testSerial}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateIdentity(Device{PCIAddress: testPCI}); err == nil {
+		t.Fatal("empty serial")
+	}
+	if err := ValidateIdentity(Device{SerialNumber: testSerial}); err == nil {
+		t.Fatal("empty PCI")
 	}
 }
 
@@ -395,4 +558,14 @@ func newDPU(name, node string) *unstructured.Unstructured {
 
 func requestFor(obj *unstructured.Unstructured) reconcile.Request {
 	return reconcile.Request{NamespacedName: types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}}
+}
+
+func getDPU(t *testing.T, c client.Client, name string) *unstructured.Unstructured {
+	t.Helper()
+	got := &unstructured.Unstructured{}
+	got.SetGroupVersionKind(DataProcessingUnitGVK)
+	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, got); err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

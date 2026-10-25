@@ -38,27 +38,65 @@
 # /var/run/dpu-daemon/vendor-plugin/vendor-plugin.sock so the in-tree
 # dpu-operator daemon can dial it.
 #
+# Socket share: kind uses emptyDir plus an opi-daemon sidecar
+# (config/vsp/daemonset.yaml). An independently deployed daemon cannot
+# see emptyDir. Hardware uses hostPath /var/run/dpu-daemon
+# DirectoryOrCreate (config/overlays/hardware-vsp) and the official
+# Bidirectional mount in config/opi-daemon. cmd/opi-daemon is the
+# GrpcPlugin Init/GetDevices client.
+#
 # One unix socket multiplexes:
 #   - opi_api.lifecycle.v1alpha1.LifeCycleService / DeviceService
 #     (what internal/daemon/plugin GrpcPlugin currently dials)
 #   - Vendor.LifeCycleService / DeviceService / NetworkFunctionService
 #     (dpu-api)
 #
-# Vendor.NetworkFunctionService Create/Delete are acknowledgements. The
-# daemon DpuSideManager calls them with two MAC addresses after CNI add
-# on a network-function pod. NVIDIA chain members are DPUService Helm
-# charts from config/mappings/servicefunctionchain.yaml; returning Empty
-# keeps the daemon healthy without imperative VSP provisioning.
+# Selected contract (delegate-to-translator/DPF):
+#   Official DPF v26.4 creates the workload from a DPUService Helm chart
+#   (https://networking-docs.nvidia.com/dpf/26.4.0/dpuservice-development-guide).
+#   This adapter's translator server-side-applies that DPUService from a
+#   chart-bearing ServiceFunctionChain (config/mappings/servicefunctionchain.yaml).
+#   Vendor.NetworkFunctionService Create/Delete stay thin: they do not Helm-install,
+#   Helm-uninstall, or mutate DPF objects.
+#
+#   CreateNetworkFunction returns success only after DPF has accepted a
+#   live DPUService (exists, not deleting, helmChart.source.chart set).
+#   DeleteNetworkFunction is CNI detach. It succeeds only after DPF is
+#   observable; it never reports that a workload was deleted. DPF still
+#   owns the Helm release until the ServiceFunctionChain is removed.
+#
+#   grpc-only (no cluster client) uses RejectHandoff: Create/Delete fail
+#   so a socket check cannot look like DPF accepted an intent.
 #
 # Stubs are imported; this repo does not run protoc. The lifecycle Go
 # module path is github.com/opiproject/opi-api/v1/gen/go/lifecycle with a
 # replace to github.com/bn222/opi-api — the same commit the daemon uses.
 #
-# Local socket check without a cluster (macOS cannot bind /var/run):
+# Local socket check without a cluster (macOS cannot bind /var/run).
+# Mock serial is MTEXAMPLE0001 at PCI 0000:03:00.0.
 #
 #   go run ./cmd/vsp --grpc-only --serial-number=MTEXAMPLE0001 \
 #     --grpc-socket=/tmp/vendor-plugin.sock
 #   grpcurl -plaintext unix:///tmp/vendor-plugin.sock list
-#   grpcurl -plaintext unix:///tmp/vendor-plugin.sock \
+#   grpcurl -plaintext -d '{}' unix:///tmp/vendor-plugin.sock \
+#     Vendor.DeviceService/GetDevices
+#   grpcurl -plaintext -d '{}' unix:///tmp/vendor-plugin.sock \
 #     opi_api.lifecycle.v1alpha1.DeviceService/GetDevices
+#   grpcurl -plaintext -d '{"dpuMode":false}' unix:///tmp/vendor-plugin.sock \
+#     Vendor.LifeCycleService/Init
+#   grpcurl -plaintext -d '{"dpuMode":true}' unix:///tmp/vendor-plugin.sock \
+#     opi_api.lifecycle.v1alpha1.LifeCycleService/Init
+#
+# Expected list (order may vary):
+#   Vendor.DeviceService
+#   Vendor.HeartbeatService
+#   Vendor.LifeCycleService
+#   Vendor.NetworkFunctionService
+#   opi_api.lifecycle.v1alpha1.DeviceService
+#   opi_api.lifecycle.v1alpha1.LifeCycleService
+#
+# Expected GetDevices (both APIs):
+#   {"devices":{"0000:03:00.0":{"ID":"MTEXAMPLE0001","health":"Healthy"}}}
+#
+# Expected Init (both APIs): {"ip":"127.0.0.1","port":50051}
 

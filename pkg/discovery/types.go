@@ -196,6 +196,18 @@ type Device struct {
 	ProductName  string
 }
 
+// ValidateIdentity requires the two fields DPF provisioning consumes.
+// Missing either one must block annotation (and therefore DPUDevice/DPU).
+func ValidateIdentity(d Device) error {
+	if strings.TrimSpace(d.PCIAddress) == "" {
+		return fmt.Errorf("discovered device has empty PCI address")
+	}
+	if strings.TrimSpace(d.SerialNumber) == "" {
+		return fmt.Errorf("discovered device %s has empty serial number", d.PCIAddress)
+	}
+	return nil
+}
+
 // Enumerator finds DPUs on this node. Intel's equivalent is
 // platform.PciDevices() + ReadDeviceSerialNumber.
 type Enumerator interface {

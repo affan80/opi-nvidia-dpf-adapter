@@ -18,6 +18,8 @@ package mapping
 
 import (
 	"fmt"
+	"maps"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -177,6 +179,12 @@ func resolveNamespace(spec *Spec, emit Emit, source map[string]any, item any) (s
 // entries carry no lastTransitionTime; the controller stamps that so unchanged
 // conditions keep their original time). Returns nil when the spec declares no
 // status mapping.
+//
+// Conditions this mapping does not own are copied through unchanged, including
+// the daemon's Ready and every schema field on it (message, reason,
+// lastTransitionTime, observedGeneration). Replacing status.conditions with
+// this result does not drop those hardware conditions. The mapping's own
+// condition (DPFReady, DSCReady) is still the only one this call writes.
 func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]any, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
@@ -223,6 +231,7 @@ func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]
 	}
 
 	var conds []any
+	conds = append(conds, preservedStatusConditions(source, spec.Status.Conditions)...)
 	for _, c := range spec.Status.Conditions {
 		ok, err := evalBool(c.Status, celVars(source, nil, children))
 		if err != nil {
@@ -248,6 +257,45 @@ func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]
 		return nil, nil
 	}
 	return statusMap, nil
+}
+
+// preservedStatusConditions copies source conditions this mapping does not
+// write. Ready is reserved for the OPI daemon, so it is always copied and
+// never rebuilt. Schema fields on the copied condition stay as the daemon
+// wrote them.
+func preservedStatusConditions(source map[string]any, owned []StatusCondition) []any {
+	raw, ok := Get(source, "status.conditions")
+	if !ok {
+		return nil
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	writes := map[string]bool{}
+	for _, c := range owned {
+		writes[strings.ToLower(strings.TrimSpace(c.Type))] = true
+	}
+	var out []any
+	for _, item := range list {
+		m, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		t, _ := m[typeKey].(string)
+		key := strings.ToLower(strings.TrimSpace(t))
+		if key == "" || writes[key] {
+			continue
+		}
+		out = append(out, cloneMap(m))
+	}
+	return out
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	maps.Copy(out, in)
+	return out
 }
 
 // fieldValue resolves one field and applies default/required/empty rules.

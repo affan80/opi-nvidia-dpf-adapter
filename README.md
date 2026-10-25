@@ -44,6 +44,7 @@ The adapter therefore has two processes:
 |---|---|
 | `cmd/main.go` | Cluster translator. Loads `config/mappings/*.yaml`, watches OPI GVKs, SSA-applies DPF GVKs. |
 | `cmd/vsp` | Node plugin. Enumerates BlueField hardware, annotates `DataProcessingUnit`, serves the daemon's unix-socket gRPC. |
+| `cmd/opi-daemon` | GrpcPlugin handshake. Dials the VSP socket and calls Init/GetDevices. Kind sidecar or independent hostPath DaemonSet. |
 
 No `switch obj.GetKind()`. No imported OPI or DPF Go structs in the
 translator. GVKs are registered with `scheme.AddKnownTypeWithName` on
@@ -169,7 +170,7 @@ flowchart LR
     DPU["DataProcessingUnit"]
     TR["TranslationReconciler"]
   end
-  Daemon["dpu-operator daemon"] -->|Init GetDevices CreateNetworkFunction| Sock
+  Daemon["cmd/opi-daemon / dpu-operator"] -->|Init GetDevices CreateNetworkFunction| Sock
   PCI --> VSP
   VSP --> Sock
   VSP -->|annotate serial| DPU
@@ -189,10 +190,11 @@ There is no protoc in this repo. Stubs are imported
 `opiproject/dpu-operator`, and the lifecycle module with a replace to
 the same nested-module commit the daemon uses).
 
-`CreateNetworkFunction` is a successful no-op. The daemon CNI path
-sends two MAC addresses; NVIDIA chain members are `DPUService` Helm
-charts from the mapping file. Returning `Empty` keeps the daemon
-healthy without imperative provisioning.
+`CreateNetworkFunction` does not install Helm. Official DPF v26.4
+owns the workload through a `DPUService` the translator applies.
+The RPC returns success only after that DPF intent is accepted.
+`DeleteNetworkFunction` is CNI detach; it does not uninstall Helm.
+See [docs/vsp.md](docs/vsp.md).
 
 PCI enumerator: vendor `0x15b3`, function `0` only. Serial from sysfs
 `serial`, else VPD keyword `SN`, else PCIe Device Serial Number in
@@ -274,7 +276,8 @@ no-op for APIs this repo does not own).
 | `go test ./pkg/lifecycle/` | `EnsureInstalled`, pinned `InstallConfig`, Helm install/adopt (one `dpf-operator` release), pinned upgrade/rollback, cleanup that preserves external/shared resources, DPF dependency preflight (`Blocked` when Argo/cert-manager/k8s fail), skew window |
 | `go test ./pkg/translation/` | SSA, omit-unknown, SFC DPFReady, chart vs image skip |
 | `go test ./pkg/discovery/` | PCI enumerator against mocked sysfs |
-| `go test ./pkg/vsp/` | GetDevices, opi-api handshake, NetworkFunction ack |
+| `go test ./pkg/vsp/` | GetDevices, opi-api handshake, NetworkFunction DPF handoff, daemon socket share |
+| `go test ./cmd/opi-daemon/` | sidecar/independent daemon reaches Init/GetDevices |
 | `go test ./test/conformance/` | envtest against pinned OPI + DPF fixtures |
 | `make test-e2e` | Kind: CRDs, mock VSP, DPU→DPUDevice, SFC→DPUService |
 

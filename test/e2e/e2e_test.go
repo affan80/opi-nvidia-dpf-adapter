@@ -333,6 +333,15 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(strings.TrimSpace(out)).To(Equal("Running"))
 			}).Should(Succeed())
 
+			By("waiting for the OPI daemon sidecar to reach Init/GetDevices on the shared emptyDir")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "logs", "-l", vspLabel, "-c", "opi-daemon",
+					"-n", namespace, "--tail=50")
+				out, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "opi-daemon sidecar logs")
+				g.Expect(out).To(ContainSubstring("Init/GetDevices ok"))
+			}).Should(Succeed())
+
 			By("applying a DataProcessingUnit whose nodeName matches the kind node")
 			nodeName := clusterNodeName()
 			applyDataProcessingUnit(nodeName)

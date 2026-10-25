@@ -63,71 +63,97 @@ func (a *Annotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 		return ctrl.Result{}, nil
 	}
 
-	devices, err := a.Enumerator.Enumerate()
+	live, err := LiveDevices(a.Enumerator)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("enumerate dpu hardware: %w", err)
 	}
-	if len(devices) == 0 {
-		log.Info("no supported DPU on this node; leaving annotations unchanged")
-		return ctrl.Result{}, nil
+
+	views, err := a.nodeViews(ctx, node)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	asg := AssignDevices(views, live)[dpu.GetName()]
+	desired, err := a.desiredAnnotations(dpu.GetAnnotations(), asg)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// Intel returns function 0 of the matching serial. We take the first
-	// discovered DPU until multi-DPU-per-node is required.
-	dev := devices[0]
-	if dev.SerialNumber == "" {
-		return ctrl.Result{}, fmt.Errorf("discovered device %s has empty serial number", dev.PCIAddress)
-	}
-
-	// The keys are chosen by the hardware, not by this binary: an AMD card
-	// must be stamped with dpu.amd.com/serial-number and
-	// dpu.amd.com/firmware-url, because that is what
-	// config/mappings/amd-dsc200.yaml reads -- and both are required there.
-	keys, ok := AnnotationsFor(dev.VendorID)
-	if !ok {
-		return ctrl.Result{}, fmt.Errorf(
-			"device %s: no annotation keys for PCI vendor %#04x", dev.PCIAddress, dev.VendorID)
-	}
-
-	desired := map[string]string{
-		keys.Serial: dev.SerialNumber,
-	}
-	if pci := DPFPCIAddress(dev.PCIAddress); pci != "" && keys.Serial == SerialNumberAnnotation {
-		desired[PCIAddressAnnotation] = pci
-	}
-	if a.FirmwareURL != "" {
-		desired[keys.FirmwareURL] = a.FirmwareURL
-	}
-	if a.Flavor != "" {
-		desired[keys.Flavor] = a.Flavor
-	}
-	if a.FirmwareName != "" {
-		desired[keys.FirmwareName] = a.FirmwareName
-	}
-
-	if annotationsMatch(dpu.GetAnnotations(), desired) {
-		return ctrl.Result{}, nil
+	if annotationsEqual(dpu.GetAnnotations(), desired) {
+		return ctrl.Result{RequeueAfter: InventoryRefresh}, nil
 	}
 
 	orig := dpu.DeepCopy()
-	ann := dpu.GetAnnotations()
-	if ann == nil {
-		ann = map[string]string{}
-	}
-	maps.Copy(ann, desired)
-	dpu.SetAnnotations(ann)
-
+	dpu.SetAnnotations(desired)
 	if err := a.Patch(ctx, dpu, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, fmt.Errorf("stamp hardware annotations: %w", err)
 	}
-	log.Info("stamped hardware identity",
-		"dpu", dpu.GetName(),
-		"serial", dev.SerialNumber,
-		"serialKey", keys.Serial,
-		"product", dev.ProductName,
-		"pci", dev.PCIAddress,
-		"node", node)
-	return ctrl.Result{}, nil
+	if asg.Bound {
+		log.Info("stamped hardware identity",
+			"dpu", dpu.GetName(),
+			"serial", asg.Device.SerialNumber,
+			"product", asg.Device.ProductName,
+			"pci", asg.Device.PCIAddress,
+			"node", node)
+	} else if asg.Clear {
+		log.Info("cleared stale hardware identity", "dpu", dpu.GetName(), "node", node)
+	}
+	return ctrl.Result{RequeueAfter: InventoryRefresh}, nil
+}
+
+func (a *Annotator) nodeViews(ctx context.Context, node string) ([]DPUView, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(DataProcessingUnitGVK.GroupVersion().WithKind("DataProcessingUnitList"))
+	if err := a.List(ctx, list); err != nil {
+		return nil, fmt.Errorf("list DataProcessingUnits: %w", err)
+	}
+	views := make([]DPUView, 0, len(list.Items))
+	for i := range list.Items {
+		item := &list.Items[i]
+		itemNode, _, _ := unstructured.NestedString(item.Object, "spec", "nodeName")
+		if node != "" && itemNode != node {
+			continue
+		}
+		views = append(views, DPUView{Name: item.GetName(), Annotations: item.GetAnnotations()})
+	}
+	return views, nil
+}
+
+func (a *Annotator) desiredAnnotations(have map[string]string, asg Assignment) (map[string]string, error) {
+	desired := map[string]string{}
+	if have != nil {
+		maps.Copy(desired, have)
+	}
+	if asg.Clear || asg.Bound {
+		StripIdentity(desired)
+	}
+	if !asg.Bound {
+		return desired, nil
+	}
+	ident, err := IdentityAnnotations(asg.Device)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(desired, ident)
+	maps.Copy(desired, a.firmwareFor(asg.Device.VendorID))
+	return desired, nil
+}
+
+func (a *Annotator) firmwareFor(vendorID uint16) map[string]string {
+	keys, ok := AnnotationsFor(vendorID)
+	if !ok {
+		return nil
+	}
+	out := map[string]string{}
+	if a.FirmwareURL != "" {
+		out[keys.FirmwareURL] = a.FirmwareURL
+	}
+	if a.Flavor != "" {
+		out[keys.Flavor] = a.Flavor
+	}
+	if a.FirmwareName != "" {
+		out[keys.FirmwareName] = a.FirmwareName
+	}
+	return out
 }
 
 func (a *Annotator) SetupWithManager(mgr ctrl.Manager) error {
@@ -139,7 +165,10 @@ func (a *Annotator) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(a)
 }
 
-func annotationsMatch(have map[string]string, desired map[string]string) bool {
+func annotationsEqual(have, desired map[string]string) bool {
+	if len(have) != len(desired) {
+		return len(have) == 0 && len(desired) == 0
+	}
 	for k, v := range desired {
 		if have[k] != v {
 			return false

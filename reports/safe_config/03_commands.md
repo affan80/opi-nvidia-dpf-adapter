@@ -9,11 +9,11 @@ GOTOOLCHAIN=go1.26.0 make lint
 # lab VPN
 scutil --nc start "F5 Access"
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=25 -o IdentityAgent=none
-  -o IdentitiesOnly=yes -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentitiesOnly=yes -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes -o KexAlgorithms=curve25519-sha256)
 
 # InvalidConfig probe (delete after)
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply -f - <<EOF
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl apply -f - <<EOF
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig
 metadata:
@@ -31,4 +31,4 @@ k3s kubectl delete dpuoperatorconfig lcm-evil-helm
 '
 ```
 
-Need: F5 VPN, `opi_lab_key`, Go 1.26, DPF already installed. Do not helm-uninstall DPF. Do not apply AMD stubs on dh2.
+Need: F5 VPN, `<lab-ssh-key>`, Go 1.26, DPF already installed. Do not helm-uninstall DPF. Do not apply AMD stubs on dh2.

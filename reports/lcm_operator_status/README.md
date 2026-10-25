@@ -1,7 +1,7 @@
 # Observe CRD and controller readiness
 
 Date: 2026-10-23
-Lab: dh2 (`172.22.1.2`), k3s `v1.36.4+k3s1`
+Lab: dh2 (`<your-lab-hosts>`), k3s `v1.36.4+k3s1`
 
 In-repo: `opi-nvidia-dpf-adapter/docs/lcm-operator-status.md`.
 

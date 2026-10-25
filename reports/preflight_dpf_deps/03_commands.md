@@ -16,11 +16,11 @@ scutil --nc start "F5 Access"
 # wait until: scutil --nc status "F5 Access" | head -1  → Connected
 
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=25 -o IdentityAgent=none
-  -o IdentitiesOnly=yes -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentitiesOnly=yes -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes -o KexAlgorithms=curve25519-sha256)
 
 # inventory (read-only)
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 '
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> '
 k3s kubectl version --short
 for c in certificates.cert-manager.io tenantcontrolplanes.kamaji.clastix.io \
          applications.argoproj.io dpus.provisioning.dpu.nvidia.com; do
@@ -35,10 +35,10 @@ k3s kubectl get dpuoperatorconfig dpu-operator-config \
 # build linux/amd64 image and import (job dir deleted after)
 docker build --platform linux/amd64 -t controller:latest .
 docker save controller:latest | gzip > /tmp/controller-deps.tar.gz
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'mkdir -p /tmp/lab-job-deps'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'mkdir -p /tmp/lab-job-deps'
 scp "${SSH_OPTS[@]}" /tmp/controller-deps.tar.gz \
-  root@172.22.1.2:/tmp/lab-job-deps/controller.tar.gz
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'set -e
+  root@<your-lab-hosts>:/tmp/lab-job-deps/controller.tar.gz
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'set -e
 gzip -dc /tmp/lab-job-deps/controller.tar.gz | k3s ctr images import -
 k3s kubectl -n opi-nvidia-dpf-adapter-system rollout restart \
   deploy/opi-nvidia-dpf-adapter-controller-manager
@@ -48,7 +48,7 @@ rm -rf /tmp/lab-job-deps
 '
 
 # after deploy: must be Blocked, not Supported
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 '
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> '
 k3s kubectl get dpuoperatorconfig dpu-operator-config \
   -o jsonpath="{range .status.conditions[*]}{.type}={.status}/{.reason} {.message}{\"\\n\"}{end}"
 echo "---"
@@ -57,7 +57,7 @@ k3s kubectl -n opi-nvidia-dpf-adapter-system logs \
 '
 
 # AMD must not require Argo (delete after)
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply -f - <<EOF
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl apply -f - <<EOF
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig
 metadata:
@@ -73,6 +73,6 @@ k3s kubectl delete dpuoperatorconfig lcm-amd-preflight
 '
 ```
 
-Need: F5 VPN, `opi_lab_key`, Go 1.26, Docker for linux/amd64.
+Need: F5 VPN, `<lab-ssh-key>`, Go 1.26, Docker for linux/amd64.
 Do not helm-install Argo or Kamaji to force `Supported`.
 Do not helm-uninstall DPF. Do not apply AMD stub CRDs on dh2.

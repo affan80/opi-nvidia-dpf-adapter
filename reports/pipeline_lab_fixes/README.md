@@ -1,7 +1,7 @@
 # Pipeline lab fixes
 
 Date: 2026-10-23
-Lab: dh2 (`172.22.1.2`), k3s `v1.36.4+k3s1`, DPF `v26.4.0`, adapter
+Lab: dh2 (`<your-lab-hosts>`), k3s `v1.36.4+k3s1`, DPF `v26.4.0`, adapter
 `opi-nvidia-dpf-adapter` on branch `feat/schema-api-lab-fixes` (uncommitted
 mapping/LCM work still local).
 
@@ -26,6 +26,6 @@ kubeconfig against this k3s API. DPF then allocated the DPU and started
 own.
 
 Constraints that stayed in force: do not helm-uninstall DPF, do not apply
-AMD stubs on BlueField, do not copy `opi_lab_key`, do not change `/etc`,
+AMD stubs on BlueField, do not copy `<lab-ssh-key>`, do not change `/etc`,
 packages, `systemctl`, firmware, BMC, or reboot. Job files on dh2 lived
 in `/tmp/lab-job-pipeline-fix/` and were deleted after the retest.

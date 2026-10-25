@@ -263,11 +263,11 @@ Job dir only. Deleted afterward.
 
 ```bash
 JOB=/tmp/lab-job-<name>
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 "rm -rf $JOB && mkdir -p $JOB"
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> "rm -rf $JOB && mkdir -p $JOB"
 rsync -az --delete -e "ssh ${SSH_OPTS[*]}" \
   --exclude '.git' --exclude 'bin' --exclude 'cover.out' --exclude 'evidence' \
   /Users/kartikey0104/Desktop/opi-dpf-adapter/opi-nvidia-dpf-adapter/ \
-  "root@172.22.1.2:$JOB/"
+  "root@<your-lab-hosts>:$JOB/"
 
 # mappings (NVIDIA only on this host)
 ssh ... "k3s kubectl -n opi-nvidia-dpf-adapter-system create configmap \
@@ -282,4 +282,4 @@ ssh ... "cd $JOB && docker build --platform linux/amd64 -t controller:latest . \
   && rm -rf $JOB"
 ```
 
-Do not copy `opi_lab_key`. Do not leave `/tmp/lab-job-*`.
+Do not copy `<lab-ssh-key>`. Do not leave `/tmp/lab-job-*`.

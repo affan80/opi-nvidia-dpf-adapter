@@ -99,11 +99,11 @@ Result
 9. Live cluster (read-only) — blocked this run
 ------------------------------------------------
     # after F5 VPN is Connected
-    ping -c 1 172.22.1.2
+    ping -c 1 <your-lab-hosts>
     ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-        -o IdentityFile="$HOME/.ssh/opi_lab_key" \
+        -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" \
         -o UseKeychain=yes -o KexAlgorithms=curve25519-sha256 \
-        root@172.22.1.2 'k3s --version; k3s kubectl get crd \
+        root@<your-lab-hosts> 'k3s --version; k3s kubectl get crd \
           dataprocessingunits.config.openshift.io \
           servicefunctionchains.config.openshift.io \
           dpuoperatorconfigs.config.openshift.io \
@@ -112,11 +112,11 @@ Result
           -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp'
 
 Result 2026-10-23 06:15 IST
-    ping 172.22.1.2 — 100% loss (VPN Disconnected)
+    ping <your-lab-hosts> — 100% loss (VPN Disconnected)
 
 Result 2026-10-23 06:20 IST
-    scutil --nc start "F5 Access" → Connected, utun7 172.22.100.23
-    ping 172.22.1.2 — 0% loss
+    scutil --nc start "F5 Access" → Connected, utun7 <your-lab-hosts>
+    ping <your-lab-hosts> — 0% loss
     live dump: 03_live_crd_dump_dh2.md
 
 Known live skew from 2026-10-22 (do not "fix" by upgrading lab CRDs)

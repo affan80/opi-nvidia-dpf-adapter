@@ -11,7 +11,7 @@ SSH_OPTS=(
   -o ConnectTimeout=25
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
 )
@@ -28,8 +28,8 @@ scutil --nc status "F5 Access" | head -n 8
 # if Disconnected:
 scutil --nc start "F5 Access"
 
-ping -c 2 -W 2000 172.22.1.2
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s --version; hostname'
+ping -c 2 -W 2000 <your-lab-hosts>
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s --version; hostname'
 ```
 
 Result 2026-10-23
@@ -96,7 +96,7 @@ C. Live cluster — health
 ------------------------------------------------
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'bash -s' <<'EOF'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'bash -s' <<'EOF'
 k3s kubectl get node -o wide
 k3s kubectl -n dpf-operator-system get deploy -o \
   jsonpath='{range .items[*]}{.metadata.name}={.spec.template.spec.containers[0].image}{"\n"}{end}'
@@ -127,7 +127,7 @@ D. Live cluster — CRD field matrix
 For every path the mappings write, the live OpenAPI must have the property.
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'python3 -' <<'PY'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'python3 -' <<'PY'
 import json, subprocess
 
 def schema(name):
@@ -182,7 +182,7 @@ E. Live cluster — server dry-run of each mapped write
 ------------------------------------------------
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply --dry-run=server -f -' <<'Y'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl apply --dry-run=server -f -' <<'Y'
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig
 metadata: {name: lab-dry-vendor}
@@ -190,14 +190,14 @@ spec: {logLevel: 2, vendor: nvidia}
 Y
 
 # must fail
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply --dry-run=server -f -' <<'Y'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl apply --dry-run=server -f -' <<'Y'
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig
 metadata: {name: lab-dry-bad-vendor}
 spec: {logLevel: 2, vendor: acme}
 Y
 
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply --dry-run=server -f -' <<'Y'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl apply --dry-run=server -f -' <<'Y'
 apiVersion: svc.dpu.nvidia.com/v1alpha1
 kind: DPUService
 metadata: {name: lab-dry-svc, namespace: default}
@@ -228,7 +228,7 @@ F. Live cluster — objects the translator already wrote
 ------------------------------------------------
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'bash -s' <<'EOF'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'bash -s' <<'EOF'
 echo "=== OPI ==="
 k3s kubectl get dpuoperatorconfig dpu-operator-config -o yaml | sed -n '/^spec:/,/^status:/p;/^status:/,$p'
 k3s kubectl get dataprocessingunit dh2-bluefield-2 -o wide
@@ -268,7 +268,7 @@ G. Live cluster — annotation unknown vendor
 ------------------------------------------------
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'bash -s' <<'EOF'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'bash -s' <<'EOF'
 k3s kubectl apply -f - <<'Y'
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig

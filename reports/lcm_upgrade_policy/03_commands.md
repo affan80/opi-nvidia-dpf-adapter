@@ -5,10 +5,10 @@
 ```bash
 scutil --nc start "F5 Access"
 scutil --nc status "F5 Access"
-ping -c 2 172.22.1.2
+ping -c 2 <your-lab-hosts>
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 \
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<your-lab-hosts> \
   'hostname; k3s --version'
 ```
 
@@ -28,8 +28,8 @@ Do **not** `helm upgrade`, `helm uninstall`, or stamp
 
 ```bash
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<your-lab-hosts> '
 k3s kubectl get secret -n dpf-operator-system -l owner=helm \
   -o jsonpath="{range .items[*]}{.metadata.name} owner={.metadata.labels.owner}{\"\\n\"}{end}"
 k3s kubectl get deploy -n dpf-operator-system dpf-operator-controller-manager \

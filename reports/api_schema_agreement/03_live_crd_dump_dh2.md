@@ -3,8 +3,8 @@ Live CRD dump — dh2 — 2026-10-23
 VPN
 - Was Disconnected (last drop 2026-10-22 20:56, F5ChannelError -1073740512)
 - Started: scutil --nc start "F5 Access"
-- Now Connected, client utun7 = 172.22.100.23
-- ping 172.22.1.2: 0% loss, ~330 ms
+- Now Connected, client utun7 = <your-lab-hosts>
+- ping <your-lab-hosts>: 0% loss, ~330 ms
 
 Cluster
 - k3s v1.36.4+k3s1

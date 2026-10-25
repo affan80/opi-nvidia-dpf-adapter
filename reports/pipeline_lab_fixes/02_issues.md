@@ -160,10 +160,10 @@ route on `br-dpu` would steal management traffic and break SSH.
 
 **Fix:** runtime-only stub (not netplan, not `/etc`):
 
-- `ip link add br-dpu type bridge` + `169.254.99.1/24` + up
+- `ip link add br-dpu type bridge` + `<your-lab-hosts>/24` + up
 - extra default route via `br-dpu` **metric 10000** (real defaults stay
   metric 100 on `ens10f0np0` / `ens1f*`)
-- ping `172.22.1.1` still succeeded
+- ping `<your-lab-hosts>` still succeeded
 
 Hostagent then set `OOBBridgeConfigured=True`. This is a lab check
 bypass, not a real OOB network. See vulnerabilities.

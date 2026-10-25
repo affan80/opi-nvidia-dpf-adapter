@@ -18,7 +18,7 @@ passed.
 | Kind e2e | **5/5 PASS**, cluster deleted |
 | `pkg/vsp` (unrelated unix-socket flake in sandbox) | ok with full permissions |
 
-## Lab dh2 (`172.22.1.2`)
+## Lab dh2 (`<your-lab-hosts>`)
 
 VPN Connected. k3s `v1.36.4+k3s1`.
 

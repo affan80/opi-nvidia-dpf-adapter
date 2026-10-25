@@ -2,7 +2,7 @@
 
 Date: 2026-10-24
 Repo: `opi-nvidia-dpf-adapter`
-Lab: dh2 (`172.22.1.2`), BlueField-2, k3s `v1.36.4+k3s1`
+Lab: dh2 (`<your-lab-hosts>`), BlueField-2, k3s `v1.36.4+k3s1`
 VPN: F5 Access Connected (this Mac)
 
 In-repo copy: `opi-nvidia-dpf-adapter/docs/lcm-upgrade-policy.md`.

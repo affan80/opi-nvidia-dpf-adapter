@@ -14,19 +14,19 @@ Result: all `ok`.
 ## HBN pin on the lab
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl patch servicefunctionchain sfc-chart-probe --type json \
    -p "[{\"op\":\"replace\",\"path\":\"/spec/networkFunctions/0/chart/version\",\"value\":\"v26.4.0\"}]"'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl get dpuservice hbn -n default -o jsonpath="{.spec.helmChart.source.version}"'
 ```
 
 ## Argo vuln
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl -n dpf-operator-system get svc -l app.kubernetes.io/part-of=argocd -o wide'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl -n dpf-operator-system delete secret argocd-initial-admin-secret'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl -n dpf-operator-system get svc argo-cd-argocd-server -o jsonpath="type={.spec.type}\n"'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl -n dpf-operator-system get svc -l app.kubernetes.io/part-of=argocd -o wide'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl -n dpf-operator-system delete secret argocd-initial-admin-secret'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl -n dpf-operator-system get svc argo-cd-argocd-server -o jsonpath="type={.spec.type}\n"'
 ```
 
 ## DPFOperatorConfig
@@ -48,21 +48,21 @@ On dh2: dump CRD JSON, drop the privileged-required rule, `kubectl replace -f`.
 ```bash
 cd opi-nvidia-dpf-adapter
 docker build --platform linux/amd64 -t controller:latest .
-docker save controller:latest | ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s ctr images import -'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+docker save controller:latest | ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s ctr images import -'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl -n opi-nvidia-dpf-adapter-system rollout restart deploy/opi-nvidia-dpf-adapter-controller-manager'
 ```
 
 ## Combined pipeline retest (final)
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl -n dpf-operator-system get dpfoperatorconfig dpfoperatorconfig'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get dpuoperatorconfig dpu-operator-config'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get servicefunctionchain sfc-chart-probe -n default'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get dpuservice hbn -n default'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl -n dpf-operator-system get bfb,dpu,dpunode,dpudevice,dpuservice'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get application -A'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get dpucluster -A'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl -n dpf-operator-system get dpfoperatorconfig dpfoperatorconfig'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get dpuoperatorconfig dpu-operator-config'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get servicefunctionchain sfc-chart-probe -n default'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get dpuservice hbn -n default'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl -n dpf-operator-system get bfb,dpu,dpunode,dpudevice,dpuservice'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get application -A'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get dpucluster -A'
 ```
 
 ## Static DPUCluster (second pass)

@@ -22,11 +22,11 @@ SSH_OPTS=(
   -o ConnectTimeout=25
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
 )
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 '
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> '
 k3s kubectl get crd subscriptions.operators.coreos.com \
   clusterserviceversions.operators.coreos.com
 k3s kubectl get subscription,csv -A

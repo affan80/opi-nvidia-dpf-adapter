@@ -8,7 +8,7 @@ SSH_OPTS=(
   -o ConnectTimeout=25
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
 )
@@ -29,23 +29,23 @@ make verify-api
 ```bash
 scutil --nc status "F5 Access" | head -n 8
 scutil --nc start "F5 Access"          # if Disconnected
-ping -c 2 -W 2000 172.22.1.2
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'hostname; k3s --version'
+ping -c 2 -W 2000 <your-lab-hosts>
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'hostname; k3s --version'
 ```
 
 ## 3. Live probes
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl get dpuoperatorconfig dpu-operator-config -o yaml'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s kubectl get dpuoperatorconfig dpu-operator-config -o yaml'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl get crd dpus.provisioning.dpu.nvidia.com dscdevices.dpu.amd.com'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl -n dpf-operator-system get deploy dpf-operator-controller-manager \
      -o jsonpath="{.spec.template.spec.containers[0].image}{"\n"}"'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl get dpuoperatorconfig dpu-operator-config \
      -o jsonpath="{range .status.conditions[*]}{.type}={.status}/{.reason}{"\n"}{end}"'
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> \
   'k3s kubectl -n opi-nvidia-dpf-adapter-system logs \
      deploy/opi-nvidia-dpf-adapter-controller-manager --tail=80 | grep ensure'
 ```
@@ -70,10 +70,10 @@ ensure installed vendor=nvidia source=spec action=detected
 ```bash
 docker build --platform linux/amd64 -t controller:latest .
 docker save controller:latest | gzip > /tmp/controller-ensure.tar.gz
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'mkdir -p /tmp/lab-job-ensure'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'mkdir -p /tmp/lab-job-ensure'
 scp "${SSH_OPTS[@]}" /tmp/controller-ensure.tar.gz \
-  root@172.22.1.2:/tmp/lab-job-ensure/controller.tar.gz
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'set -e
+  root@<your-lab-hosts>:/tmp/lab-job-ensure/controller.tar.gz
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'set -e
 gzip -dc /tmp/lab-job-ensure/controller.tar.gz | k3s ctr images import -
 k3s kubectl -n opi-nvidia-dpf-adapter-system rollout restart \
   deploy/opi-nvidia-dpf-adapter-controller-manager

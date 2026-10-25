@@ -2,8 +2,8 @@
 
 **Date:** 2026-10-25  
 **Repo:** `opi-nvidia-dpf-adapter` (`github.com/kartikeyg0104/opi-nvidia-dpf-adapter`)  
-**Lab:** dh2 `172.22.1.2` (BlueField-2, k3s `v1.36.4+k3s1`, DPF Helm `v26.4.0`)  
-**VPN Mac:** `Kartikeys-MacBook-Pro.local` (`10.7.8.82`), user `kartikey0104`  
+**Lab:** dh2 `<your-lab-hosts>` (BlueField-2, k3s `v1.36.4+k3s1`, DPF Helm `v26.4.0`)  
+**VPN Mac:** `<vpn-mac-host>.local` (`<your-lab-hosts>`), user `kartikey0104`  
 **Image on lab (last roll):** `controller:lcm-20261024b`  
 **Pin stays:** NVIDIA DPF **v26.4.0** (v26.4.1 reviewed, not taken; BF3-tested patch, lab is BF2)
 
@@ -56,7 +56,7 @@ It does **not** write daemon `Ready`. It writes:
 - Do not helm-uninstall live DPF
 - Do not run `mlxfwreset` or reboot the host
 - Do not apply AMD DSC stubs on BlueField
-- Do not copy `opi_lab_key`
+- Do not copy `<lab-ssh-key>`
 - Do not change lab `/etc`, packages, `systemctl`, firmware, BMC
 - Job files on servers only in `/tmp/lab-job-<name>/`, deleted after
 - `helm.sh/helm/v3` is not imported (fights k8s v0.36 / controller-runtime v0.24)
@@ -66,16 +66,16 @@ It does **not** write daemon `Ready`. It writes:
 Other Macs are not on the VPN. Hop through the VPN Mac, then SSH.
 
 ```bash
-ssh kartikey0104@Kartikeys-MacBook-Pro.local 'ssh root@172.22.1.2 "hostname && kubectl get dpuoperatorconfig"'
+ssh kartikey0104@<vpn-mac-host>.local 'ssh root@<your-lab-hosts> "hostname && kubectl get dpuoperatorconfig"'
 ```
 
 On this VPN Mac:
 
 ```bash
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile=$HOME/.ssh/opi_lab_key -o UseKeychain=yes \
+  -o IdentityFile=$HOME/.ssh/<lab-ssh-key> -o UseKeychain=yes \
   -o KexAlgorithms=curve25519-sha256 \
-  root@172.22.1.2
+  root@<your-lab-hosts>
 ```
 
 ## Rebuild PDFs

@@ -28,16 +28,16 @@ ASPEED (console only)
 
 Host	Address	What is on it	This repo?
 dh2
-172.22.1.2
+<your-lab-hosts>
 k3s. BlueField-2. This is the only machine running the adapter.
 Yes
 
 dh1 (opi)
-172.22.1.1
+<your-lab-hosts>
 AMD Pensando card. No Kubernetes.
 No
 
 dh3
-172.22.1.3
+<your-lab-hosts>
 Marvell card. No Kubernetes.
 No

@@ -1,6 +1,6 @@
 # NVIDIA VSP integration — test commands
 
-Date: 2026-10-25. Repo: `github.com/kartikeyg0104/opi-nvidia-dpf-adapter`, branch `LifecycleManager`. Lab host: dh2 `172.22.1.2`, k3s `v1.36.4+k3s1`, DPF `v26.4.0`. This Mac is the VPN Mac. Do not copy `opi_lab_key`. Do not change `/etc`, packages, systemd, firmware, or BMC. Do not run `mlxfwreset`. Do not `helm uninstall` DPF.
+Date: 2026-10-25. Repo: `github.com/kartikeyg0104/opi-nvidia-dpf-adapter`, branch `LifecycleManager`. Lab host: dh2 `<your-lab-hosts>`, k3s `v1.36.4+k3s1`, DPF `v26.4.0`. This Mac is the VPN Mac. Do not copy `<lab-ssh-key>`. Do not change `/etc`, packages, systemd, firmware, or BMC. Do not run `mlxfwreset`. Do not `helm uninstall` DPF.
 
 ## 1. Reach dh2
 
@@ -8,12 +8,12 @@ Date: 2026-10-25. Repo: `github.com/kartikeyg0104/opi-nvidia-dpf-adapter`, branc
 SSH_OPTS=(
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
   -o ConnectTimeout=20
 )
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'hostname; date -u'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'hostname; date -u'
 ```
 
 On dh2, `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`. Job files go only in `/tmp/lab-job-<name>/` and are deleted afterward. Pack the tree with `COPYFILE_DISABLE=1` and `find . -name '._*' -delete`, because AppleDouble files break YAML load. Tests that open `../../config` need a repo-shaped working directory. dh2 has no Go toolchain. Compile on the Mac:

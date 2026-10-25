@@ -185,12 +185,12 @@ You reach the lab only through the VPN on Kartikey's MacBook Pro. Other Macs hop
 
 | Host | Address | Machine | Card | RAM | CPUs | SSH with your key |
 |---|---|---|---|---|---|---|
-| dh1 | 172.22.1.1 | Dell PowerEdge R650 | AMD Pensando DSC2-100 | 128 GB | 2× Xeon Gold 6326, 64 threads | yes. Hostname inside the OS is `opi`. |
-| dh2 | 172.22.1.2 | HPE DL360 | NVIDIA BlueField-2 | 256 GB | 2× Xeon Gold 6326, 64 threads | yes |
-| dh3 | 172.22.1.3 | HP RL300 | Marvell CN106 | 256 GB | 1× Arm Neoverse-N1, 80 cores | yes |
-| dh9 | 172.22.1.9 | ASUS ESC8000A-E12P | none seen | 384 GB | 2× AMD EPYC 9354, 128 threads | yes |
-| dh4 | 172.22.1.4 | Dell PowerEdge R760 | Intel Dayton Peak | unknown | unknown | no |
-| dh5 | 172.22.1.5 | Dell R760ax | NVIDIA BlueField-3 | unknown | unknown | no |
+| dh1 | <your-lab-hosts> | Dell PowerEdge R650 | AMD Pensando DSC2-100 | 128 GB | 2× Xeon Gold 6326, 64 threads | yes. Hostname inside the OS is `opi`. |
+| dh2 | <your-lab-hosts> | HPE DL360 | NVIDIA BlueField-2 | 256 GB | 2× Xeon Gold 6326, 64 threads | yes |
+| dh3 | <your-lab-hosts> | HP RL300 | Marvell CN106 | 256 GB | 1× Arm Neoverse-N1, 80 cores | yes |
+| dh9 | <your-lab-hosts> | ASUS ESC8000A-E12P | none seen | 384 GB | 2× AMD EPYC 9354, 128 threads | yes |
+| dh4 | <your-lab-hosts> | Dell PowerEdge R760 | Intel Dayton Peak | unknown | unknown | no |
+| dh5 | <your-lab-hosts> | Dell R760ax | NVIDIA BlueField-3 | unknown | unknown | no |
 
 The graphics chips on these machines (Matrox, ASPEED) are only for the remote console. They are not GPUs you can run models on.
 

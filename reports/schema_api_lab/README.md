@@ -2,7 +2,7 @@
 
 Date: 2026-10-23
 Repo: `opi-nvidia-dpf-adapter`
-Lab host: dh2 (`172.22.1.2`), NVIDIA BlueField-2, k3s `v1.36.4+k3s1`
+Lab host: dh2 (`<your-lab-hosts>`), NVIDIA BlueField-2, k3s `v1.36.4+k3s1`
 
 This folder is the full record of the schema/API work: how to reach the lab,
 every API the adapter touches, every dead-API we found, how each one was

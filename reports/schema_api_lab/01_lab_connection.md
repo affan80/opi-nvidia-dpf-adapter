@@ -7,15 +7,15 @@ folder were done against that cluster.
 
 | Host | Address | RAM | Card | Kubernetes | SSH |
 |---|---|---|---|---|---|
-| dh1 | 172.22.1.1 | 128 GB | AMD Pensando DSC2-100 | no | yes |
-| dh2 | 172.22.1.2 | 256 GB | NVIDIA BlueField-2 | k3s v1.36.4+k3s1 | yes |
-| dh3 | 172.22.1.3 | 256 GB | Marvell CN106 | no | yes |
-| dh9 | 172.22.1.9 | 384 GB | none seen | no | yes |
-| dh4, dh5 | 172.22.1.4, 172.22.1.5 | unknown | | | no — do not force it |
+| dh1 | <your-lab-hosts> | 128 GB | AMD Pensando DSC2-100 | no | yes |
+| dh2 | <your-lab-hosts> | 256 GB | NVIDIA BlueField-2 | k3s v1.36.4+k3s1 | yes |
+| dh3 | <your-lab-hosts> | 256 GB | Marvell CN106 | no | yes |
+| dh9 | <your-lab-hosts> | 384 GB | none seen | no | yes |
+| dh4, dh5 | <your-lab-hosts>, <your-lab-hosts> | unknown | | | no — do not force it |
 
-VPN Mac: `Kartikeys-MacBook-Pro.local` (`10.7.8.82`), user `kartikey0104`.
+VPN Mac: `<vpn-mac-host>.local` (`<your-lab-hosts>`), user `kartikey0104`.
 F5 Access is installed on that Mac only. Do not install F5 on another Mac.
-Do not copy `opi_lab_key`.
+Do not copy `<lab-ssh-key>`.
 
 ## 1. Start the VPN (this Mac is the VPN Mac)
 
@@ -27,7 +27,7 @@ scutil --nc status "F5 Access" | head -n 8
 scutil --nc start "F5 Access"
 
 # wait until it prints Connected, then
-ping -c 2 -W 2000 172.22.1.2
+ping -c 2 -W 2000 <your-lab-hosts>
 ```
 
 Expected when the tunnel is up:
@@ -35,7 +35,7 @@ Expected when the tunnel is up:
 ```
 Connected
 ...
-64 bytes from 172.22.1.2: ...
+64 bytes from <your-lab-hosts>: ...
 2 packets transmitted, 2 packets received, 0.0% packet loss
 ```
 
@@ -53,12 +53,12 @@ SSH_OPTS=(
   -o ConnectTimeout=25
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
 )
 
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s --version; hostname; free -h | head -2; nproc'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'k3s --version; hostname; free -h | head -2; nproc'
 ```
 
 Expected:
@@ -75,21 +75,21 @@ lab key. Do not install F5 on the other Mac.
 
 ```bash
 # example: reach dh2 through the VPN Mac
-ssh kartikey0104@Kartikeys-MacBook-Pro.local \
+ssh kartikey0104@<vpn-mac-host>.local \
   'ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-       -o IdentityFile="$HOME/.ssh/opi_lab_key" \
+       -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" \
        -o UseKeychain=yes -o KexAlgorithms=curve25519-sha256 \
-       root@172.22.1.2 "hostname; k3s --version"'
+       root@<your-lab-hosts> "hostname; k3s --version"'
 ```
 
 A one-shot check of another host (dh1) looks like:
 
 ```bash
-ssh kartikey0104@Kartikeys-MacBook-Pro.local \
+ssh kartikey0104@<vpn-mac-host>.local \
   'ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-       -o IdentityFile="$HOME/.ssh/opi_lab_key" \
+       -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" \
        -o UseKeychain=yes -o KexAlgorithms=curve25519-sha256 \
-       root@172.22.1.1 "free -h && nproc"'
+       root@<your-lab-hosts> "free -h && nproc"'
 ```
 
 ## 4. Lab rules (use, do not change the server)

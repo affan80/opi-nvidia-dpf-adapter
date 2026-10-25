@@ -1,6 +1,6 @@
 Live API/schema re-test on dh2 — 2026-10-23
 
-VPN: F5 Access Connected (172.22.100.23). k3s v1.36.4+k3s1.
+VPN: F5 Access Connected (<your-lab-hosts>). k3s v1.36.4+k3s1.
 Fixture gate: make verify-api PASS (mappings match vendored CRDs).
 Live gate: 1 mapping write is dead on the lab and is failing reconcile now.
 

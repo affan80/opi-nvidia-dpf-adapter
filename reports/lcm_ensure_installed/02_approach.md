@@ -30,7 +30,7 @@ Contract updates in the same change:
 | `DpuOperatorConfig` with `spec.vendor` enum | intent parsing |
 | DPF already on the cluster | detect, do not helm-install |
 | Version pin annotation (optional) | policy when discovery has no image read |
-| F5 VPN + `opi_lab_key` on the VPN Mac | reach 172.22.1.2 |
+| F5 VPN + `<lab-ssh-key>` on the VPN Mac | reach <your-lab-hosts> |
 | `/tmp/lab-job-<name>/` for image import | lab rule: no `/etc`, no packages |
 
 ## What must not be used
@@ -40,5 +40,5 @@ Contract updates in the same change:
 | `helm upgrade` / `helm uninstall` DPF | later phase; lab rule |
 | Apply AMD stub CRDs on dh2 | fake device on BlueField |
 | LCM writes `Ready` | daemon owns it |
-| Copy `opi_lab_key` / install F5 on another Mac | privacy |
+| Copy `<lab-ssh-key>` / install F5 on another Mac | privacy |
 | Change dh2 `/etc`, packages, systemd | servers are for use, not changes |

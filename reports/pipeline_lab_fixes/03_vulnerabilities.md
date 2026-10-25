@@ -75,8 +75,8 @@ Hostagent will not mark `OOBBridgeConfigured` unless a bridge named
 bridge would replace management routing.
 
 The stub adds `br-dpu` with a **metric 10000** default via
-`169.254.99.254`. Real DHCP defaults stay metric 100. Ping to
-`172.22.1.1` stayed up.
+`<your-lab-hosts>`. Real DHCP defaults stay metric 100. Ping to
+`<your-lab-hosts>` stayed up.
 
 **Risk:** DPF believes OOB is configured. Later stages that actually
 send DPU management traffic over `br-dpu` will fail or black-hole.

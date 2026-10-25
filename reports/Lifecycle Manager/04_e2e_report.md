@@ -87,9 +87,9 @@ This is not Kind. This is the real BlueField-2 + DPF v26.4.0 path.
 ```bash
 # VPN Mac
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile=$HOME/.ssh/opi_lab_key -o UseKeychain=yes \
+  -o IdentityFile=$HOME/.ssh/<lab-ssh-key> -o UseKeychain=yes \
   -o KexAlgorithms=curve25519-sha256 \
-  root@172.22.1.2
+  root@<your-lab-hosts>
 
 k3s kubectl get nodes
 k3s kubectl get dpuoperatorconfig
@@ -196,7 +196,7 @@ make docker-preflight
 make test-e2e
 
 # Lab hop
-ssh ... root@172.22.1.2 \
+ssh ... root@<your-lab-hosts> \
   'k3s kubectl get dpuoperatorconfig dpu-operator-config -o yaml | head
    k3s kubectl -n dpf-operator-system get dpu dh2-bluefield-2 -o yaml | head
    k3s kubectl -n dpf-operator-system get dpuservice'

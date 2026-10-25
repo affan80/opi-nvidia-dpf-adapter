@@ -12,8 +12,8 @@ Lab (read-only — do **not** helm-uninstall):
 
 ```bash
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<your-lab-hosts> '
 k3s kubectl get secret -n dpf-operator-system \
   sh.helm.release.v1.dpf-operator.v1 \
   -o jsonpath="owner={.metadata.labels.owner}{\"\\n\"}"

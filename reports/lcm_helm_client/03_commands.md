@@ -30,23 +30,23 @@ scutil --nc status "F5 Access" | head -1
 SSH_OPTS=(
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
   -o ConnectTimeout=20
 )
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'hostname; k3s --version; date -u'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'hostname; k3s --version; date -u'
 ```
 
 Do not hop through another Mac. Do not install F5 on another Mac.
-Do not copy `opi_lab_key`. Do not change `/etc`, packages, or systemd.
+Do not copy `<lab-ssh-key>`. Do not change `/etc`, packages, or systemd.
 
 This run: F5 started, Connected after ~90s, ping 0% loss, `SSH_OK` / `dh2`.
 
 ## 2. Prerequisite inventory (read-only)
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'bash -s' <<'EOF'
+ssh "${SSH_OPTS[@]}" root@<your-lab-hosts> 'bash -s' <<'EOF'
 k3s --version
 k3s kubectl version
 k3s kubectl get crd certificates.cert-manager.io applications.argoproj.io \

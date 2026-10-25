@@ -1,7 +1,7 @@
 # Preflight DPF dependencies
 
 Date: 2026-10-23
-Lab: dh2 (172.22.1.2), VPN Connected, k3s v1.36.4+k3s1
+Lab: dh2 (<your-lab-hosts>), VPN Connected, k3s v1.36.4+k3s1
 
 | File | What |
 |---|---|

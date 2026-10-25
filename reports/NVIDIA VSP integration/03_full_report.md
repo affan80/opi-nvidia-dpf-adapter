@@ -32,7 +32,7 @@ The translator remains the writer of DPF objects. The VSP does not Helm-install 
 
 | Field | Value |
 |---|---|
-| Host | dh2 `172.22.1.2` |
+| Host | dh2 `<your-lab-hosts>` |
 | PCI | `0000:0f:00.0` (`0000-0f-00` in DPF) |
 | Vendor / device | `0x15b3:0xa2d6` BlueField-2 MT42822 |
 | Second PF | `0000:0f:00.1`, same serial, not a second DPU |

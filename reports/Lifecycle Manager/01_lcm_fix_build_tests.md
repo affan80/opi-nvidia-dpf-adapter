@@ -59,22 +59,22 @@ F5 Access must show Connected. Then:
 
 ```bash
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile=$HOME/.ssh/opi_lab_key -o UseKeychain=yes \
+  -o IdentityFile=$HOME/.ssh/<lab-ssh-key> -o UseKeychain=yes \
   -o KexAlgorithms=curve25519-sha256 \
-  root@172.22.1.2 'hostname && k3s kubectl get nodes && k3s kubectl get dpuoperatorconfig'
+  root@<your-lab-hosts> 'hostname && k3s kubectl get nodes && k3s kubectl get dpuoperatorconfig'
 ```
 
 ### Other Mac (hop)
 
 ```bash
-ssh kartikey0104@Kartikeys-MacBook-Pro.local \
+ssh kartikey0104@<vpn-mac-host>.local \
   'ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-     -o IdentityFile=$HOME/.ssh/opi_lab_key -o UseKeychain=yes \
+     -o IdentityFile=$HOME/.ssh/<lab-ssh-key> -o UseKeychain=yes \
      -o KexAlgorithms=curve25519-sha256 \
-     root@172.22.1.2 "hostname && nproc && free -h"'
+     root@<your-lab-hosts> "hostname && nproc && free -h"'
 ```
 
-Do not install F5 on the other Mac. Do not copy `opi_lab_key`.
+Do not install F5 on the other Mac. Do not copy `<lab-ssh-key>`.
 
 Job files only:
 

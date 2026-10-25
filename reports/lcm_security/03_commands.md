@@ -4,10 +4,10 @@
 
 ```bash
 scutil --nc start "F5 Access"
-ping -c 3 172.22.1.2
+ping -c 3 <your-lab-hosts>
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 \
+  -o IdentityFile="$HOME/.ssh/<lab-ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<your-lab-hosts> \
   'hostname; k3s --version'
 ```
 

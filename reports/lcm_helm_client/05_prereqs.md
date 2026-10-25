@@ -9,8 +9,8 @@ scutil --nc start "F5 Access"
 # first attempt: Connecting, ping 100% loss, SSH timed out
 # stop/start: Disconnected
 # start again: Connected after ~29 tries (~90s)
-ping 172.22.1.2 → 0% loss (309–391 ms)
-ssh root@172.22.1.2 → SSH_OK dh2
+ping <your-lab-hosts> → 0% loss (309–391 ms)
+ssh root@<your-lab-hosts> → SSH_OK dh2
 ```
 
 ## What is installed and working

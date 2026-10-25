@@ -47,8 +47,8 @@ on one `MemoryHelmClient`: first `installed`, second `adopted`, same
 
 | Prerequisite | Installed / configured | Working |
 |---|---|---|
-| F5 VPN | Connected | ping 172.22.1.2 0% loss |
-| SSH to dh2 | `opi_lab_key` | `SSH_OK` hostname `dh2` |
+| F5 VPN | Connected | ping <your-lab-hosts> 0% loss |
+| SSH to dh2 | `<lab-ssh-key>` | `SSH_OK` hostname `dh2` |
 | k3s | `v1.36.4+k3s1` | Server Version `v1.36.4+k3s1` |
 | cert-manager | ns `cert-manager`, 3 pods Running | CRD `certificates.cert-manager.io` |
 | Argo CD | pods in `dpf-operator-system` | CRD `applications.argoproj.io` |

@@ -51,6 +51,13 @@ generate-rbac: ## Generate the translation controller's RBAC markers from config
 verify-rbac: ## Fail if the generated RBAC markers are stale.
 	go run ./hack/gen-rbac -check
 
+.PHONY: verify-manifests
+verify-manifests: generate-rbac controller-gen ## Fail if config/rbac/role.yaml is stale.
+	tmpdir="$$(mktemp -d)" ; \
+	"$(CONTROLLER_GEN)" rbac:roleName=manager-role paths="./..." output:rbac:dir="$$tmpdir" ; \
+	diff -u config/rbac/role.yaml "$$tmpdir/role.yaml" ; \
+	rm -rf "$$tmpdir"
+
 .PHONY: verify-api
 verify-api: ## Fail if mappings write fields the pinned CRDs do not have.
 	go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run 'TestMappingFieldsExistInVendoredCRDs|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
@@ -84,8 +91,20 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= opi-nvidia-dpf-adapter-test-e2e
 
+.PHONY: docker-preflight
+docker-preflight: ## Fail fast when the Docker daemon is not reachable (Kind e2e).
+	@command -v docker >/dev/null 2>&1 || { \
+		echo "docker is not installed."; \
+		exit 1; \
+	}
+	@docker info >/dev/null 2>&1 || { \
+		echo "Docker daemon is not reachable at the current DOCKER_HOST/socket."; \
+		echo "Start Docker Desktop (or set DOCKER_HOST) before Kind e2e."; \
+		exit 1; \
+	}
+
 .PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
+setup-test-e2e: docker-preflight ## Set up a Kind cluster for e2e tests if it does not exist
 	@command -v $(KIND) >/dev/null 2>&1 || { \
 		echo "Kind is not installed. Please install Kind manually."; \
 		exit 1; \
@@ -121,7 +140,7 @@ check-no-lab-details: ## Fail if private lab details or real serials are tracked
 	./hack/check-no-lab-details.sh
 
 .PHONY: lint
-lint: check-no-lab-details verify-rbac verify-api golangci-lint ## Run golangci-lint linter
+lint: check-no-lab-details verify-rbac verify-api verify-manifests golangci-lint ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
 
 .PHONY: lint-fix
@@ -234,6 +253,13 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
 GOLANGCI_LINT_VERSION ?= v2.12.2
+GOVULNCHECK_VERSION ?= v1.1.4
+
+.PHONY: govulncheck
+govulncheck: $(LOCALBIN) ## Scan the module graph for known Go vulnerabilities.
+	GOBIN="$(LOCALBIN)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	"$(LOCALBIN)/govulncheck" ./...
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

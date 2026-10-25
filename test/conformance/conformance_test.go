@@ -110,7 +110,7 @@ spec:
     chart:
       repository: https://helm.ngc.nvidia.com/nvidia/doca
       name: hbn
-      version: v25.10.1
+      version: v26.4.0
 `,
 		children: []childSpec{
 			{
@@ -119,7 +119,7 @@ spec:
 					"spec.serviceID":                "hbn",
 					"spec.helmChart.source.repoURL": "https://helm.ngc.nvidia.com/nvidia/doca",
 					"spec.helmChart.source.chart":   "hbn",
-					"spec.helmChart.source.version": "v25.10.1",
+					"spec.helmChart.source.version": "v26.4.0",
 					"spec.security.privileged":      true,
 				},
 			},
@@ -158,7 +158,7 @@ spec:
   nodeName: kind-worker
 `,
 		children: []childSpec{
-			{gvk: devGVK, name: "conf-bf3-device", ns: dpfNS, setReady: true},
+			{gvk: devGVK, name: "mt1234conf", ns: dpfNS, setReady: true},
 			{gvk: bfbGVK, name: "bf-bundle", ns: dpfNS, setReady: true},
 			{gvk: provDPU, name: "conf-bf3", ns: dpfNS, setReady: true},
 			// DPUFlavor has no status subresource: exposes no conditions and is
@@ -422,7 +422,7 @@ spec:
     chart:
       repository: https://helm.ngc.nvidia.com/nvidia/doca
       name: hbn
-      version: v25.10.1
+      version: v26.4.0
 `)
 		Expect(k8sClient.Create(ctx, src)).To(Succeed())
 		srcNN := types.NamespacedName{Name: "xns-chain", Namespace: "opi"}
@@ -525,7 +525,7 @@ spec:
 		expectAbsent(provDPU, types.NamespacedName{Name: "iso-dsc2", Namespace: dpfNS})
 
 		By("the BlueField card produced DPF CRs and no AMD CRs")
-		getObject(devGVK, types.NamespacedName{Name: "iso-bf3-device", Namespace: dpfNS})
+		getObject(devGVK, types.NamespacedName{Name: "mt1234iso", Namespace: dpfNS})
 		getObject(provDPU, types.NamespacedName{Name: "iso-bf3", Namespace: dpfNS})
 		expectAbsent(dscDeviceGVK, types.NamespacedName{Name: "iso-bf3-dsc", Namespace: amdNS})
 		expectAbsent(dscPolicyGVK, types.NamespacedName{Name: "iso-bf3", Namespace: amdNS})

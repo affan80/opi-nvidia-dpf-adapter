@@ -23,7 +23,7 @@
         fieldRef:
           fieldPath: spec.nodeName
     - name: DPU_BFB_URL
-      value: https://content.mellanox.com/BlueField/BFBs/Ubuntu22.04/bf-bundle-2.7.0-33_24.04_ubuntu-22.04_prod.bfb
+      value: https://content.mellanox.com/BlueField/BFBs/Ubuntu24.04/bf-bundle-3.4.0-92_26.04_ubuntu-24.04_prod.bfb
 - op: replace
   path: /spec/template/spec/containers/0/securityContext
   value:

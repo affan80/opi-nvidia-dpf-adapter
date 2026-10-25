@@ -351,7 +351,7 @@ var _ = Describe("Manager", Ordered, func() {
 			By("waiting for DPUDevice")
 			Eventually(func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "dpudevices.provisioning.dpu.nvidia.com",
-					e2eDPUName+"-device", "-n", dpfNamespace,
+					strings.ToLower(mockSerial), "-n", dpfNamespace,
 					"-o", "jsonpath={.spec.serialNumber}")
 				out, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "DPUDevice not created")
@@ -411,7 +411,7 @@ var _ = Describe("Manager", Ordered, func() {
 				e2eChartNF, "-n", "default", "-o", "jsonpath={.spec.helmChart.source.version}")
 			version, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.TrimSpace(version)).To(Equal("v25.10.1"))
+			Expect(strings.TrimSpace(version)).To(Equal("v26.4.0"))
 
 			By("asserting the image-only NF never becomes a DPUService")
 			Consistently(func(g Gomega) {

@@ -152,7 +152,7 @@ var _ = Describe("Reconciler owner references", func() {
 							"chart": map[string]any{
 								"repository": "https://helm.ngc.nvidia.com/nvidia/doca",
 								"name":       "hbn",
-								"version":    "v25.10.1",
+								"version":    "v26.4.0",
 							},
 						},
 					},
@@ -214,7 +214,7 @@ var _ = Describe("Reconciler owner references", func() {
 				name string
 				gvk  schema.GroupVersionKind
 			}{
-				{"bf3-worker-device", devGVK},
+				{"mt1234", devGVK},
 				{"dpf-default-flavor", schema.GroupVersionKind{
 					Group: "provisioning.dpu.nvidia.com", Version: "v1alpha1", Kind: "DPUFlavor",
 				}},

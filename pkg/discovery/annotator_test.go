@@ -75,6 +75,9 @@ func TestAnnotatorStampsSerialOnMatchingNode(t *testing.T) {
 	if ann[BFBURLAnnotation] != testBFBURL {
 		t.Fatalf("bfb-url annotation=%q", ann[BFBURLAnnotation])
 	}
+	if ann[PCIAddressAnnotation] != DPFPCIAddress(testPCI) {
+		t.Fatalf("pci-address annotation=%q, want %q", ann[PCIAddressAnnotation], DPFPCIAddress(testPCI))
+	}
 }
 
 func TestAnnotatorSkipsOtherNodes(t *testing.T) {

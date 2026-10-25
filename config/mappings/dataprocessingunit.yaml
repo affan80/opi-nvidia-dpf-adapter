@@ -27,8 +27,11 @@ emit:
     # OPI kind, so without this an AMD DSC card would also sprout DPF CRs.
     # orValue('BlueField') keeps DPF the default when dpuProductName is unset.
     when: "source.spec.?dpuProductName.orValue('BlueField').startsWith('BlueField')"
+    # DPF hostagent names DPUDevice as lower(serial). A different name
+    # (source-name + '-device') creates a second object that the webhook
+    # rejects as a duplicate serial, and DPUNode never appears.
     name:
-      cel: "source.metadata.name + '-device'"
+      cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/serial-number'].orValue(source.metadata.name + '-device').lowerAscii()"
     fields:
       - to: spec.serialNumber
         cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/serial-number'].orValue('')"
@@ -44,6 +47,33 @@ emit:
     fields:
       - to: spec.dpuMode
         value: dpu
+      # Official DPF 26.4.0 HBN defaults
+      # (https://networking-docs.nvidia.com/dpf/26.4.0/dpuflavor).
+      # Empty nvconfig zeroed PF_TOTAL_SF/PF_SF_BAR_SIZE on dh2 (current
+      # 32/8 → next_boot 0) and left the DPU Rebooting. Annotations
+      # dpu.nvidia.com/pf-total-sf and dpu.nvidia.com/pf-sf-bar-size override
+      # so a recreate can match live firmware and drop reset_needed.
+      # Zero/empty annotations fall back to 20/10. Flavor spec is immutable
+      # — this applies to new/recreated DPUFlavor objects only.
+      - to: spec.nvconfig
+        cel: |
+          [{
+            "device": "*",
+            "parameters": [
+              "PF_BAR2_ENABLE=0",
+              "PER_PF_NUM_SF=1",
+              "PF_TOTAL_SF=" + (source.metadata.?annotations['dpu.nvidia.com/pf-total-sf'].orValue('20') == '0' ? '20' : source.metadata.?annotations['dpu.nvidia.com/pf-total-sf'].orValue('20')),
+              "PF_SF_BAR_SIZE=" + (source.metadata.?annotations['dpu.nvidia.com/pf-sf-bar-size'].orValue('10') == '0' ? '10' : source.metadata.?annotations['dpu.nvidia.com/pf-sf-bar-size'].orValue('10')),
+              "NUM_PF_MSIX_VALID=0",
+              "PF_NUM_PF_MSIX_VALID=1",
+              "PF_NUM_PF_MSIX=228",
+              "INTERNAL_CPU_MODEL=1",
+              "INTERNAL_CPU_OFFLOAD_ENGINE=0",
+              "SRIOV_EN=1",
+              "NUM_OF_VFS=46",
+              "LAG_RESOURCE_ALLOCATION=1"
+            ]
+          }]
 
   - target:
       group: provisioning.dpu.nvidia.com
@@ -71,7 +101,7 @@ emit:
         required: true
       # Required DPF fields with no OPI counterpart — defaults / annotations
       - to: spec.dpuDeviceName
-        cel: "source.metadata.name + '-device'"
+        cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/serial-number'].orValue(source.metadata.name + '-device').lowerAscii()"
       - to: spec.dpuFlavor
         cel: "source.metadata.?annotations['dpu.nvidia.com/flavor'].orValue('dpf-default-flavor')"
       # DPU.spec.bfb is a string (the BFB CR name), not an object.
@@ -80,6 +110,9 @@ emit:
       - to: spec.serialNumber
         cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/serial-number'].orValue('')"
         required: true
+      # DPF hostAgent install requires spec.pciAddress (0000-0f-00 form).
+      - to: spec.pciAddress
+        cel: "source.metadata.?annotations['provisioning.dpu.nvidia.com/pci-address'].orValue('')"
       # Literal default: noEffect is the safe local-dev default (no host drain,
       # no taint). This is a plain value, not a CEL-enforced constraint.
       - to: spec.nodeEffect.noEffect
@@ -100,11 +133,11 @@ emit:
 # touches the daemon's. amd-dsc200.yaml does the same with DSCReady.
 #
 # Readiness contract: DPFReady is True only when every child is actually
-# ready. DPU and BFB CRDs default status.phase to Initializing and often
-# have no Ready condition until the DPF operator runs. Treating "no
-# conditions" as ready made DPFReady=True while those objects were still
-# Initializing. DPUFlavor has no phase and no conditions and stays
-# non-blocking.
+# ready. NVIDIA DPU/BFB publish status.phase (Ready / OS Installing / …)
+# and typed conditions like OSInstalled — they do not set type=Ready.
+# Requiring type=Ready left DPFReady=False after a successful provision.
+# DPUFlavor has no phase and no conditions and stays non-blocking.
+# phase=OS Installing / Initializing / Rebooting is not Ready.
 status:
   # Ownership gate, matching the per-emit guards above. Without it this block
   # still evaluated on an AMD card -- over zero children -- and parked
@@ -114,6 +147,6 @@ status:
   schema: conditions
   conditions:
     - type: DPFReady
-      status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True') || (c.?status.?conditions.orValue([]).size() == 0 && (c.?status.?phase.orValue('') == '' || c.status.phase == 'Ready')))"
+      status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True') || c.?status.?phase.orValue('') == 'Ready' || (c.?status.?conditions.orValue([]).size() == 0 && c.?status.?phase.orValue('') == ''))"
       reason: AllChildrenReady
-      message: "All emitted DPF objects that publish readiness report Ready"
+      message: "All emitted DPF objects report Ready (condition or phase)"

@@ -92,6 +92,9 @@ func (a *Annotator) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resul
 	desired := map[string]string{
 		keys.Serial: dev.SerialNumber,
 	}
+	if pci := DPFPCIAddress(dev.PCIAddress); pci != "" && keys.Serial == SerialNumberAnnotation {
+		desired[PCIAddressAnnotation] = pci
+	}
 	if a.FirmwareURL != "" {
 		desired[keys.FirmwareURL] = a.FirmwareURL
 	}

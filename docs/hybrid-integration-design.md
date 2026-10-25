@@ -28,7 +28,7 @@ Compared on 2026-10-22 against lab host dh2 before the pin was written.
 | Kubernetes | v1.36.4 (k3s), Go modules v0.36.0 | different minor than `go.mod` |
 | OPI | `config.openshift.io/v1` @ `c107ef719f74d4f841ceb1ed45bbd293b3739a3c` | treating Helm `chart` as upstream-main. It is unmerged [opiproject/dpu-operator#6](https://github.com/opiproject/dpu-operator/pull/6), `patchState: unmerged` |
 | NVIDIA DPF | **v26.4.0**, support window **[v26.4.0, v27.0.0)** | older than min → `VendorOperatorSupported=False` reason `TooOld`; at or after v27.0.0 → `TooNew` |
-| AMD | known, **Unpinned** | no invented window |
+| AMD | known, **Unpinned** | no invented window; no Helm/OLM package (`amd.helm.published: false`) |
 
 Do not bump a pin without comparing installed OPI CRDs to
 `test/e2e/crds/opi` and mapping `to:` paths to `test/e2e/crds/dpf`.
@@ -54,9 +54,30 @@ free-form strings and they do not use `x-kubernetes-preserve-unknown-fields`.
 4. Apply OPI `DataProcessingUnit` / `ServiceFunctionChain` objects. The
    translator emits DPF children. The VSP stamps serial / BFB URL annotations;
    mappings never invent serials.
-5. LCM Helm/OLM install of DPF is **not** in this phase. The LCM only
-   classifies the requested vendor and version. Do not have this adapter
-   `helm upgrade` DPF on a lab or production cluster.
+5. LCM runs `EnsureInstalled` (intent → preflight → safe config →
+   dependency check → installer → readiness) instead of logging
+   "would install". The default installer **detects** an existing vendor
+   operator via REST mapping. Missing DPF prerequisites
+   (`cert-manager`, Argo CD, Kamaji when a `DPUCluster` is type `kamaji`)
+   or an unsupported Kubernetes minor become `Blocked` and skip the
+   installer.
+   Helm settings come only from `DefaultInstallConfig` (chart
+   `dpf-operator` @ `v26.4.0`, repo `https://helm.ngc.nvidia.com/nvidia/doca`,
+   namespace `dpf-operator-system`, owner `opi-nvidia-dpf-adapter`). Chart
+   URLs and helm args on the object are `InvalidConfig`.    HelmInstaller
+   (`pkg/lifecycle/helm_client.go`) may install or adopt that pin only
+   when `LifecycleManager.Helm` is set **and** the release is owned by
+   `opi-nvidia-dpf-adapter` (or `adopt-existing=true` on the exact pin).
+   `cmd/main.go` wires `SecretHelmClient` and `ClusterOLMClient`.
+   Latest DPF docs (v26.4) publish Helm only (`dpf.olm.published: false`).
+   OLM is observe-only: if `operators.coreos.com` exists, version is
+   read from the CSV at `dpf-operator-system/dpf-operator`. The adapter
+   never creates a Subscription. Helm storage, when present, wins.
+   Missing Helm and OLM fall back to DetectingInstaller.
+   AMD has no published DSC operator chart (not the Pollara Network
+   Operator, not Lago). Helm/OLM return `ErrNoVendorChart` and the
+   chain detects `DSCDevice` when present, or `absent` on BlueField.
+   Do not apply stub `DSC*` CRDs on this lab.
 
 Kind e2e is the exception: it installs **vendored** CRDs from `test/e2e/crds/`
 into an isolated cluster, never the lab.
@@ -82,6 +103,8 @@ Hardware identity (VSP → mapping, not LCM):
 | `dpu.nvidia.com/bfb-url` | `BFB.spec.url` |
 | `dpu.nvidia.com/bfb` | BFB / DPU name (`bf-bundle` default) |
 | `dpu.nvidia.com/flavor` | Flavor / DPU name (`dpf-default-flavor` default) |
+| `dpu.nvidia.com/pf-total-sf` | DPUFlavor `PF_TOTAL_SF` (default official 20; `0` rejected) |
+| `dpu.nvidia.com/pf-sf-bar-size` | DPUFlavor `PF_SF_BAR_SIZE` (default official 10; `0` rejected) |
 
 ## Service-chain resource graph
 
@@ -124,11 +147,20 @@ One writer per `(object GVK, condition type)`. Table:
 | ServiceFunctionChain | `DPFReady` | mapping:servicefunctionchain | conditions |
 | DpuOperatorConfig | `Ready` | vsp-opi-daemon | conditions |
 | DpuOperatorConfig | `VendorOperatorSupported` | lifecycle | conditions |
+| DpuOperatorConfig | `VendorOperatorReady` | lifecycle | conditions |
+| DpuOperatorConfig | `VendorOperatorCleanup` | lifecycle | conditions |
+| DpuOperatorConfig | `VendorDPUReady` | lifecycle | conditions |
 
-`Ready` is reserved. Mappings that write it fail `Spec.Validate`. Two vendors
-on the same type fail the writer-table tests. SFC `status.conditions` is on
-the pinned fixture; the translator writes `DPFReady` only. Status has no
-preserve-unknown-fields.
+`Ready` is reserved. Mappings that write it fail `Spec.Validate`. The LCM
+must not write it either (`AssessReadiness.Ready` is an in-memory flag;
+`VendorOperatorReady` reasons are Installing / Ready / Degraded).
+Two vendors on the same type fail the writer-table tests. SFC
+`status.conditions` is on the pinned fixture; the translator writes
+`DPFReady` only. Status has no preserve-unknown-fields.
+
+The detecting installer reports AMD `DSC*` **absent** when
+`dscdevices.dpu.amd.com` is not on the cluster. That is required on a
+BlueField host. Do not apply the envtest stub CRDs there.
 
 ## Uninstall policy
 
@@ -138,6 +170,7 @@ preserve-unknown-fields.
 | `make undeploy` | Remove translator + VSP Deployment/RBAC from the cluster | Delete OPI or DPF CRDs; helm-uninstall DPF; wipe lab `/etc` |
 | `make uninstall` | No-op (this repo owns no CRDs) | `kubectl delete crd` for `config.openshift.io` or `*.dpu.nvidia.com` |
 | Remove `DpuOperatorConfig` NVIDIA annotation | LCM stops claiming NVIDIA. Existing DPF CRs stay until their OPI owners are deleted | Adapter uninstalls the DPF operator |
+| Delete `DpuOperatorConfig` (LCM cleanup) | Delete the Helm release only when ownership is `controller` (or adopted with `delete-owned`) **and** `lifecycle.opi.nvidia.com/removal-policy=delete-owned`. Missing, conflicting, or Helm `owner=helm` metadata preserves the release. Shared CRDs and dataplane stay while other tenants or OPI objects still reference them | Delete a resource only because it is in scope; helm-uninstall the live lab DPF; delete DPF CRDs; delete another namespace's objects |
 
 This adapter does not change lab servers (no package installs, no CRD
 upgrades, no Helm `--take-ownership` of DPF). Job scratch goes in
@@ -158,3 +191,8 @@ upgrades, no Helm `--take-ownership` of DPF). Job scratch goes in
 | mapping emits `DPUDeployment` | `TestSFCMappingIsDirectOwnership` fails |
 | mapping writes `Ready` | `Validate` fails, controller will not start |
 | two writers on one condition type | writer-table load / tests fail |
+| chart URL / helm-args / extra --set on DpuOperatorConfig | `VendorOperatorSupported=False`, `InvalidConfig`; Helm settings stay `DefaultInstallConfig` |
+| DPF Helm namespace other than `dpf-operator-system` | rejected; release owner is `opi-nvidia-dpf-adapter` |
+| Kubernetes not minor v1.36, or no API access | `VendorOperatorSupported=False`, `Blocked`; installer skipped |
+| NVIDIA missing cert-manager or Argo CD | `Blocked`; installer skipped (no false `detected`). Operator installs the chart; this adapter does not. |
+| Kamaji missing and a `DPUCluster` has `type=kamaji` | `Blocked`; otherwise Kamaji is not required |

@@ -47,3 +47,47 @@ dpf:
     - DPUService
     - DPUServiceInterface
     - DPUServiceChain
+  # The only Helm settings the LCM will ever use. Chart URLs and extra
+  # helm args on DpuOperatorConfig are rejected.
+  helm:
+    chart: dpf-operator
+    repo: https://helm.ngc.nvidia.com/nvidia/doca
+    version: v26.4.0
+    release: dpf-operator
+    namespace: dpf-operator-system
+    owner: opi-nvidia-dpf-adapter
+  # Latest DPF docs (v26.4.0 / v26.4.1) install through Helm only.
+  # Empty fields mean observe-only: if operators.coreos.com exists,
+  # read Subscription/CSV at dpf-operator-system/dpf-operator; never
+  # create a catalog, operator group, or Subscription.
+  olm:
+    published: false
+    package: ""
+    channel: ""
+    catalog: ""
+  # DPF v26.4 Helm prerequisites (docs/public/getting-started/helm-prerequisites.md).
+  # Kamaji is required only when a DPUCluster uses type=kamaji.
+  dependencies:
+    required:
+      - cert-manager
+      - argo-cd
+    conditional:
+      - kamaji
+
+# AMD Pensando DSC. Known vendor, no published operator chart.
+# Latest public AMD Helm is the Network Operator (Pollara AI NIC) and
+# Lago telemetry — neither is a DSC DPU operator. CRDs under
+# test/conformance/crds/amd are stubs. Do not apply them on BlueField.
+amd:
+  supportWindow: unpinned
+  helm:
+    published: false
+    chart: ""
+    repo: ""
+    version: ""
+    release: ""
+  olm:
+    published: false
+    package: ""
+    channel: ""
+    catalog: ""

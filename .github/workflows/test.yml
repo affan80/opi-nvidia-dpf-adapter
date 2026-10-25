@@ -26,4 +26,9 @@ jobs:
       - name: Running Tests
         run: |
           go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
           make test
+
+      - name: Lifecycle race tests
+        run: go test -race ./pkg/lifecycle/ -count=1

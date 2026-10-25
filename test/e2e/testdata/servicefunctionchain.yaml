@@ -11,4 +11,4 @@ spec:
     chart:
       name: hbn
       repository: https://helm.ngc.nvidia.com/nvidia/doca
-      version: v25.10.1
+      version: v26.4.0

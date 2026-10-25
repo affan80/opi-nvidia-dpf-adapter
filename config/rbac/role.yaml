@@ -5,12 +5,29 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
   - apiextensions.k8s.io
   resources:
   - customresourcedefinitions
   verbs:
   - get
   - list
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - config.openshift.io
   resources:
@@ -26,6 +43,7 @@ rules:
   - config.openshift.io
   resources:
   - dataprocessingunits/finalizers
+  - dpuoperatorconfigs/finalizers
   - servicefunctionchains/finalizers
   verbs:
   - update
@@ -46,6 +64,7 @@ rules:
   verbs:
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - dpu.amd.com
@@ -63,6 +82,30 @@ rules:
   - update
   - watch
 - apiGroups:
+  - operator.dpu.nvidia.com
+  resources:
+  - dpfoperatorconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - clusterserviceversions
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - subscriptions
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+- apiGroups:
   - provisioning.dpu.nvidia.com
   resources:
   - bfbs
@@ -76,6 +119,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - provisioning.dpu.nvidia.com
+  resources:
+  - dpuclusters
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - svc.dpu.nvidia.com

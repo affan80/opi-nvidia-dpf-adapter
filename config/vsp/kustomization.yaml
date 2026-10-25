@@ -8,5 +8,5 @@ resources:
 - daemonset.yaml
 images:
 - name: controller
-  newName: controller
-  newTag: latest
+  newName: example.com/opi-nvidia-dpf-adapter
+  newTag: v0.0.1

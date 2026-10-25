@@ -1,0 +1,20 @@
+# API Priority and Fairness for the NVIDIA LCM service account.
+# Apply with kubectl. Do not change host packages or /etc.
+# namePrefix from config/default is not applied here — keep these names stable.
+apiVersion: flowcontrol.apiserver.k8s.io/v1
+kind: PriorityLevelConfiguration
+metadata:
+  name: opi-nvidia-lcm
+  labels:
+    app.kubernetes.io/name: opi-nvidia-dpf-adapter
+    app.kubernetes.io/component: lcm
+spec:
+  type: Limited
+  limited:
+    nominalConcurrencyShares: 10
+    limitResponse:
+      type: Queue
+      queuing:
+        queues: 8
+        handSize: 2
+        queueLengthLimit: 20

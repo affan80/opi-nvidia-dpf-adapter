@@ -186,6 +186,8 @@ func TestSkewStatusNeverClaimsFailureForUnknown(t *testing.T) {
 		{SkewTooOld, "False"},
 		{SkewTooNew, "False"},
 		{SkewUnknownVendor, "False"},
+		{SkewInvalidConfig, "False"},
+		{SkewBlocked, "False"},
 		{SkewUnknown, "Unknown"},
 		{SkewUnpinned, "Unknown"},
 	} {

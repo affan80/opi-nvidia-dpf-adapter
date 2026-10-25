@@ -42,7 +42,7 @@ make govulncheck
 | Go toolchain | go1.26.10 | stdlib CVEs through GO-2026-6809 |
 | Kubernetes | v0.36.0 | same minor as lab k3s v1.36.4 |
 | controller-runtime | v0.24.1 | matches k8s v0.36 |
-| `google.golang.org/grpc` | v1.83.2 | GO-2026-6348 / 6443 / 6061 |
+| `google.golang.org/grpc` | v1.84.0 | GO-2026-6348 / 6443 / 6061 (floor v1.83.2) |
 | `golang.org/x/net` | v0.60.0 | HTTP/2 set through GO-2026-6617 |
 | `golang.org/x/text` | v0.42.0 | GO-2026-5970 (x/net 0.60 needs 0.42) |
 | `go.opentelemetry.io/otel/*` | v1.45.0 | GO-2026-6505 |

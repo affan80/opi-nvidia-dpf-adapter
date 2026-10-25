@@ -18,6 +18,7 @@ package mapping
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -293,9 +294,7 @@ func preservedStatusConditions(source map[string]any, owned []StatusCondition) [
 
 func cloneMap(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 

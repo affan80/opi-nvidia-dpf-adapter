@@ -151,7 +151,9 @@ func validateAgainstCRD(t *testing.T, kind string, obj map[string]any, crd apiex
 		t.Fatalf("%s: pinned CRD has no storage v1alpha1 schema", kind)
 	}
 	var internal apiextensions.JSONSchemaProps
-	if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(props, &internal, nil); err != nil {
+	if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(
+		props, &internal, nil,
+	); err != nil {
 		t.Fatal(err)
 	}
 	validator, _, err := validation.NewSchemaValidator(&internal)

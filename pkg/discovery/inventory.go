@@ -18,7 +18,7 @@ package discovery
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -68,7 +68,8 @@ func LiveDevices(e Enumerator) ([]Device, error) {
 // IdentityKeys are the annotations that mean "this DPU is a live card".
 // Flavor and firmware URL are operator config, not inventory.
 func IdentityKeys() []string {
-	keys := []string{PCIAddressAnnotation}
+	keys := make([]string, 0, 1+len(annotationsByVendor))
+	keys = append(keys, PCIAddressAnnotation)
 	for _, v := range annotationsByVendor {
 		keys = append(keys, v.Serial)
 	}
@@ -176,10 +177,10 @@ func AssignDevices(dpus []DPUView, live []Device) map[string]Assignment {
 	}
 
 	leftover := unusedDevices(live, used)
-	sort.Slice(empty, func(i, j int) bool { return empty[i].Name < empty[j].Name })
-	sort.Slice(leftover, func(i, j int) bool { return leftover[i].PCIAddress < leftover[j].PCIAddress })
+	slices.SortFunc(empty, func(a, b DPUView) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(leftover, func(a, b Device) int { return strings.Compare(a.PCIAddress, b.PCIAddress) })
 	n := min(len(empty), len(leftover))
-	for i := 0; i < n; i++ {
+	for i := range n {
 		d := leftover[i]
 		out[empty[i].Name] = Assignment{Device: d, Bound: true}
 		used[d.SerialNumber] = struct{}{}

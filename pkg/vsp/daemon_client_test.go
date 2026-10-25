@@ -67,7 +67,9 @@ func TestHandshakePropagatesGetDevicesError(t *testing.T) {
 	waitStop(t, cancel, errc)
 }
 
-func startClientServer(t *testing.T, enum discovery.Enumerator) (context.Context, string, chan error, context.CancelFunc) {
+func startClientServer(
+	t *testing.T, enum discovery.Enumerator,
+) (context.Context, string, chan error, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

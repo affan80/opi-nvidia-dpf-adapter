@@ -22,12 +22,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 const defaultSysfsPCI = "/sys/bus/pci/devices"
+
+const (
+	pciSerialFile = "serial"
+	pciVPDFile    = "vpd"
+	pciConfigFile = "config"
+)
 
 const (
 	productBlueField2  = "BlueField-2"
@@ -184,8 +190,8 @@ func uniqueBySerial(devices []Device) []Device {
 	if len(devices) < 2 {
 		return devices
 	}
-	sort.Slice(devices, func(i, j int) bool {
-		return devices[i].PCIAddress < devices[j].PCIAddress
+	slices.SortFunc(devices, func(a, b Device) int {
+		return strings.Compare(a.PCIAddress, b.PCIAddress)
 	})
 	seen := make(map[string]struct{}, len(devices))
 	out := make([]Device, 0, len(devices))
@@ -224,7 +230,7 @@ func readPCIID(path string) (uint16, error) {
 // readSerial prefers a sysfs serial file, then VPD keyword SN, then the
 // PCIe Device Serial Number extended capability in config space.
 func readSerial(devDir string) (string, error) {
-	for _, name := range []string{"serial", "vpd", "config"} {
+	for _, name := range []string{pciSerialFile, pciVPDFile, pciConfigFile} {
 		path := filepath.Join(devDir, name)
 		b, err := os.ReadFile(path)
 		if err != nil {
@@ -237,15 +243,15 @@ func readSerial(devDir string) (string, error) {
 			return "", fmt.Errorf("read %s: %w", path, err)
 		}
 		switch name {
-		case "serial":
+		case pciSerialFile:
 			if s := strings.TrimSpace(string(b)); s != "" {
 				return s, nil
 			}
-		case "vpd":
+		case pciVPDFile:
 			if sn, ok := vpdSerial(b); ok {
 				return sn, nil
 			}
-		case "config":
+		case pciConfigFile:
 			if sn, ok := configDSN(b); ok {
 				return sn, nil
 			}

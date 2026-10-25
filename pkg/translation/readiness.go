@@ -21,6 +21,7 @@ import (
 	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -83,7 +84,8 @@ func lcmConditionReady(obj *unstructured.Unstructured) bool {
 		if !ok {
 			continue
 		}
-		if cond["type"] == lifecycle.OperatorReadyConditionType && cond["status"] == "True" {
+		if cond["type"] == lifecycle.OperatorReadyConditionType &&
+			cond["status"] == string(metav1.ConditionTrue) {
 			return true
 		}
 	}

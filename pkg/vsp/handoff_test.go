@@ -191,7 +191,9 @@ func validNF() *pb.NFRequest {
 	return &pb.NFRequest{Input: "00:00:00:00:00:01", Output: "00:00:00:00:00:02"}
 }
 
-func startServerWithHandoff(t *testing.T, h NetworkFunctionHandoff) (context.Context, *grpc.ClientConn, chan error, context.CancelFunc) {
+func startServerWithHandoff(
+	t *testing.T, h NetworkFunctionHandoff,
+) (context.Context, *grpc.ClientConn, chan error, context.CancelFunc) {
 	t.Helper()
 	enum := discovery.MockEnumerator{
 		Devices: []discovery.Device{
@@ -226,7 +228,9 @@ func acceptedDPUService(name string) *unstructured.Unstructured {
 	u.SetName(name)
 	u.SetNamespace("dpf-operator-system")
 	_ = unstructured.SetNestedField(u.Object, name, "spec", "serviceID")
-	_ = unstructured.SetNestedField(u.Object, "https://helm.ngc.nvidia.com/nvidia/doca", "spec", "helmChart", "source", "repoURL")
+	_ = unstructured.SetNestedField(
+		u.Object, "https://helm.ngc.nvidia.com/nvidia/doca", "spec", "helmChart", "source", "repoURL",
+	)
 	_ = unstructured.SetNestedField(u.Object, "doca-hbn", "spec", "helmChart", "source", "chart")
 	_ = unstructured.SetNestedField(u.Object, "v26.4.0", "spec", "helmChart", "source", "version")
 	return u

@@ -113,7 +113,6 @@ var _ = Describe("LCM readiness gate", func() {
 
 		result, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
 		Expect(result.RequeueAfter).To(Equal(DPFNotReadyRequeue))
 		Expect(deviceExists(cl)).To(BeFalse())
 
@@ -138,7 +137,11 @@ var _ = Describe("LCM readiness gate", func() {
 
 	It("does not block when no DpuOperatorConfig exists", func() {
 		scheme := testScheme(dpuGVK, devGVK, flavorGVK, bfbGVK, provDPU, lifecycle.DpuOperatorConfigGVK)
-		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bluefieldSource()).WithStatusSubresource(bluefieldSource()).Build()
+		cl := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(bluefieldSource()).
+			WithStatusSubresource(bluefieldSource()).
+			Build()
 		r := &Reconciler{Client: cl, Scheme: scheme, Spec: dpuSpec()}
 		result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: "bf3-worker"}})
 		Expect(err).NotTo(HaveOccurred())
@@ -160,7 +163,11 @@ var _ = Describe("LCM readiness gate", func() {
 
 	It("retries on a fixed delay while a target API is undiscovered, then applies", func() {
 		scheme := testScheme(dpuGVK, devGVK, flavorGVK, bfbGVK, provDPU)
-		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bluefieldSource()).WithStatusSubresource(bluefieldSource()).Build()
+		cl := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(bluefieldSource()).
+			WithStatusSubresource(bluefieldSource()).
+			Build()
 		installed := false
 		r := &Reconciler{
 			Client: cl,
@@ -174,7 +181,6 @@ var _ = Describe("LCM readiness gate", func() {
 
 		result, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
 		Expect(result.RequeueAfter).To(Equal(DPFNotReadyRequeue))
 		Expect(deviceExists(cl)).To(BeFalse())
 

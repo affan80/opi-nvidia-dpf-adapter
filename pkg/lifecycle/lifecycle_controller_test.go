@@ -74,7 +74,7 @@ func TestLifecycleReconcile(t *testing.T) {
 				WithObjects(tc.obj).
 				WithStatusSubresource(tc.obj).
 				Build()
-			r := &LifecycleManager{Client: cl, Scheme: sch}
+			r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe()}
 			if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: tc.reqNN}); err != nil {
 				t.Fatalf("Reconcile(%s) error: %v", tc.name, err)
 			}
@@ -83,10 +83,10 @@ func TestLifecycleReconcile(t *testing.T) {
 }
 
 // configWithVersion builds a config for a vendor with an installed-version
-// annotation, which is how the LCM learns the version until Helm/OLM wiring
-// lands.
-func configWithVersion(name, vendor, installed string) *unstructured.Unstructured {
-	c := newConfig(name, map[string]any{"vendor": vendor})
+// annotation. The annotation is the human pin; Helm and OLM can also
+// observe a version when those package managers are present.
+func configWithVersion(vendor, installed string) *unstructured.Unstructured {
+	c := newConfig("cfg", map[string]any{"vendor": vendor})
 	if installed != "" {
 		c.SetAnnotations(map[string]string{VersionAnnotation: installed})
 	}
@@ -125,10 +125,10 @@ func TestLifecycleReportsVersionSkew(t *testing.T) {
 		{"unknown vendor is rejected", "acme", "v1.0.0", "False", string(SkewUnknownVendor)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			obj := configWithVersion("cfg", tc.vendor, tc.installed)
+			obj := configWithVersion(tc.vendor, tc.installed)
 			cl := fake.NewClientBuilder().WithScheme(sch).
 				WithObjects(obj).WithStatusSubresource(obj).Build()
-			r := &LifecycleManager{Client: cl, Scheme: sch}
+			r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe()}
 
 			nn := types.NamespacedName{Name: "cfg"}
 			if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: nn}); err != nil {
@@ -169,11 +169,11 @@ func TestLifecycleReportsVersionSkew(t *testing.T) {
 // field meaningless and generate endless status writes.
 func TestLifecycleSkewConditionIsStable(t *testing.T) {
 	sch := lcmScheme()
-	obj := configWithVersion("cfg", "nvidia", "v26.4.0")
+	obj := configWithVersion("nvidia", "v26.4.0")
 	cl := fake.NewClientBuilder().WithScheme(sch).
 		WithObjects(obj).WithStatusSubresource(obj).Build()
 	clock := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	r := &LifecycleManager{Client: cl, Scheme: sch, Now: func() time.Time {
+	r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe(), Now: func() time.Time {
 		clock = clock.Add(90 * time.Second)
 		return clock
 	}}
@@ -237,14 +237,14 @@ func TestLifecycleSkewConditionIsStable(t *testing.T) {
 func TestLifecycleSkewPreservesTransitionTimeAcrossReasonChange(t *testing.T) {
 	sch := lcmScheme()
 	// nvidia + unparseable version: status Unknown, reason Unknown.
-	obj := configWithVersion("cfg", "nvidia", "latest")
+	obj := configWithVersion("nvidia", "latest")
 	cl := fake.NewClientBuilder().WithScheme(sch).
 		WithObjects(obj).WithStatusSubresource(obj).Build()
 	// An advancing clock: RFC3339 is second-precision, so without this every
 	// reconcile in the same wall-clock second looks identical and the test
 	// could not distinguish a preserved timestamp from a rewritten one.
 	clock := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	r := &LifecycleManager{Client: cl, Scheme: sch, Now: func() time.Time {
+	r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe(), Now: func() time.Time {
 		clock = clock.Add(90 * time.Second)
 		return clock
 	}}
@@ -333,7 +333,7 @@ func TestLifecycleVendorResolutionPrecedence(t *testing.T) {
 			}
 			cl := fake.NewClientBuilder().WithScheme(sch).
 				WithObjects(obj).WithStatusSubresource(obj).Build()
-			r := &LifecycleManager{Client: cl, Scheme: sch}
+			r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe()}
 
 			nn := types.NamespacedName{Name: "cfg"}
 			if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: nn}); err != nil {

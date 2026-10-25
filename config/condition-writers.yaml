@@ -51,3 +51,24 @@ writers:
     type: VendorOperatorSupported
     writer: lifecycle
     schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DpuOperatorConfig
+    type: VendorOperatorReady
+    writer: lifecycle
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DpuOperatorConfig
+    type: VendorOperatorCleanup
+    writer: lifecycle
+    schema: conditions
+  - object:
+      group: config.openshift.io
+      version: v1
+      kind: DpuOperatorConfig
+    type: VendorDPUReady
+    writer: lifecycle
+    schema: conditions

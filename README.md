@@ -95,8 +95,41 @@ does not fail the whole apply.
 
 Status is a single-writer table (`config/condition-writers.yaml`):
 the daemon owns `Ready`; mappings write `DPFReady` / `DSCReady`; the
-LCM writes `VendorOperatorSupported`. SFC `status.conditions` is on
-the pinned OPI fixture.
+LCM writes `VendorOperatorSupported` and `VendorOperatorReady` (never
+the daemon's `Ready`). `VendorOperatorReady` is Installing / Ready /
+Degraded after a real look at DPF CRDs, controller Deployments, and
+prerequisites. SFC `status.conditions` is on the pinned OPI fixture.
+
+The LCM no longer logs `would install`. `Reconcile` calls
+`EnsureInstalled` (intent → preflight → safe config → dependencies →
+installer → version policy → readiness). DetectingInstaller REST-maps
+the vendor API and does not helm-install DPF. `cmd/main.go` wires
+`SecretHelmClient` so Helm storage is observed, and `ClusterOLMClient`
+so a Subscription/CSV can supply the version when OLM APIs exist.
+Latest DPF docs install via Helm; `dpf.olm.published` is false and
+the adapter never creates a Subscription. Adopt only when the
+release is owned by `opi-nvidia-dpf-adapter`. Live lab DPF is
+unmanaged Helm (`owner=helm`) until
+`lifecycle.opi.nvidia.com/adopt-existing=true` claims the exact pin.
+Owned upgrades are
+pinned to `v26.4.0`; same-version is a
+no-op; downgrade is rejected unless explicitly allowed; timeout and
+rollback are verified against the actual release. Cleanup deletes a
+Helm release only after ownership and removal policy are verified;
+external, adopted-retain, shared CRDs, and referenced dataplane stay.
+AMD has no published DSC operator chart. Helm/OLM skip with
+`ErrNoVendorChart` and DetectingInstaller reports `DSCDevice`
+**absent** on a BlueField host (stubs stay in envtest). See
+[docs/lcm-ensure-installed.md](docs/lcm-ensure-installed.md),
+[docs/lcm-helm-client.md](docs/lcm-helm-client.md),
+[docs/lcm-olm.md](docs/lcm-olm.md),
+[docs/lcm-amd.md](docs/lcm-amd.md),
+[docs/lcm-image-roll.md](docs/lcm-image-roll.md),
+[docs/lcm-helm-mutation.md](docs/lcm-helm-mutation.md),
+[docs/lcm-version-pin.md](docs/lcm-version-pin.md),
+[docs/lcm-bluefield-reboot.md](docs/lcm-bluefield-reboot.md),
+[docs/lcm-upgrade-policy.md](docs/lcm-upgrade-policy.md), and
+[docs/lcm-cleanup.md](docs/lcm-cleanup.md).
 
 ## Adding a vendor
 
@@ -238,7 +271,7 @@ no-op for APIs this repo does not own).
 | `make verify-api` | Pins, fixtures, and mapping `to:` paths agree |
 | `make verify-rbac` | ClusterRole verbs match every emit kind |
 | `go test ./pkg/mapping/` | CEL/JSONPath interpreter + real mapping files + CRD agreement |
-| `go test ./pkg/lifecycle/` | Vendor sanitizer, skew window, `VendorOperatorSupported` |
+| `go test ./pkg/lifecycle/` | `EnsureInstalled`, pinned `InstallConfig`, Helm install/adopt (one `dpf-operator` release), pinned upgrade/rollback, cleanup that preserves external/shared resources, DPF dependency preflight (`Blocked` when Argo/cert-manager/k8s fail), skew window |
 | `go test ./pkg/translation/` | SSA, omit-unknown, SFC DPFReady, chart vs image skip |
 | `go test ./pkg/discovery/` | PCI enumerator against mocked sysfs |
 | `go test ./pkg/vsp/` | GetDevices, opi-api handshake, NetworkFunction ack |
@@ -272,11 +305,12 @@ Translator, PCI VSP, and DPF v26.4.0 are running on lab host dh2
 | API | Lab result |
 |---|---|
 | `DpuOperatorConfig.spec.vendor` | enum `nvidia\|amd`; live object is `nvidia` |
-| `VendorOperatorSupported` | `True` / `Supported` for DPF v26.4.0 |
+| `EnsureInstalled` | `action=detected` nvidia / v26.4.0 / `Supported`; `VendorOperatorReady` is True only when DPF CRDs, controller Deployments, and prereqs are healthy |
+| `VendorOperatorSupported` | `True` / `Supported` for DPF v26.4.0; LCM does not write `Ready` |
 | SFC `status.conditions[DPFReady]` | `True` / `AllServicesReady` on `sfc-chart-probe` |
 | `DPUService.spec.security.privileged` | `true` on `hbn` (v26.4 CEL) |
 | `DPUService.spec.helmChart.source.chart` | `hbn` |
-| AMD `DSC*` stub CRDs | not installed on this BlueField host |
+| AMD `DSC*` stub CRDs | absent on this BlueField host (installer reports `absent`; do not apply stubs here) |
 
 DPU and BFB stay `phase=Initializing`. That is the DPF operator, not a
 missing mapped field. Kind e2e still needs Docker Desktop. Helm

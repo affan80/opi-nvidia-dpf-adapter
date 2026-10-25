@@ -50,6 +50,13 @@ const (
 	// SkewUnknownVendor means the requested vendor is not nvidia or amd.
 	// Distinct from Unpinned: amd is known and unpinned; acme is rejected.
 	SkewUnknownVendor Skew = "UnknownVendor"
+	// SkewInvalidConfig means the object tried to supply a chart URL, Helm
+	// args, or a namespace that is not the pinned InstallConfig.
+	SkewInvalidConfig Skew = "InvalidConfig"
+	// SkewBlocked means cluster access, Kubernetes version, or a required
+	// DPF prerequisite (cert-manager, Argo CD, Kamaji when applicable) failed.
+	// The installer must not run; reporting Supported would be a false success.
+	SkewBlocked Skew = "Blocked"
 )
 
 // SupportedRange is a half-open version window: MinInclusive <= v < MaxExclusive.

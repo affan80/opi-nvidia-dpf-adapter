@@ -111,7 +111,7 @@ func TestSFCApplyEmitsOwnedGraph(t *testing.T) {
 				map[string]any{"name": testNFName, "chart": map[string]any{
 					"repository": "https://helm.ngc.nvidia.com/nvidia/doca",
 					"name":       testNFName,
-					"version":    "v25.10.1",
+					"version":    "v26.4.0",
 				}},
 			},
 		},
@@ -169,7 +169,7 @@ func TestSFCApplyEmitsOwnedGraph(t *testing.T) {
 				map[string]any{"name": testNFName, "chart": map[string]any{
 					"repository": "https://helm.ngc.nvidia.com/nvidia/doca",
 					"name":       testNFName,
-					"version":    "v25.10.1",
+					"version":    "v26.4.0",
 				}},
 			},
 		},

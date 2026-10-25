@@ -1,0 +1,32 @@
+apiVersion: flowcontrol.apiserver.k8s.io/v1
+kind: FlowSchema
+metadata:
+  name: opi-nvidia-lcm
+  labels:
+    app.kubernetes.io/name: opi-nvidia-dpf-adapter
+    app.kubernetes.io/component: lcm
+spec:
+  distinguisherMethod:
+    type: ByUser
+  matchingPrecedence: 8000
+  priorityLevelConfiguration:
+    name: opi-nvidia-lcm
+  rules:
+  - resourceRules:
+    - apiGroups: ["config.openshift.io"]
+      clusterScope: true
+      resources: ["dpuoperatorconfigs", "dpuoperatorconfigs/status"]
+      verbs: ["get", "list", "watch", "update", "patch"]
+    - apiGroups: [""]
+      namespaces: ["dpf-operator-system"]
+      resources: ["secrets"]
+      verbs: ["get", "list", "update", "patch"]
+    subjects:
+    - kind: ServiceAccount
+      serviceAccount:
+        name: opi-nvidia-dpf-adapter-controller-manager
+        namespace: opi-nvidia-dpf-adapter-system
+    - kind: ServiceAccount
+      serviceAccount:
+        name: controller-manager
+        namespace: opi-nvidia-dpf-adapter-system

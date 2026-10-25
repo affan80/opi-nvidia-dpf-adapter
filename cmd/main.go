@@ -25,13 +25,16 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -71,9 +74,9 @@ func main() {
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&mappingDir, "mapping-dir", "config/mappings",
 		"Directory of FieldMapping YAML documents that drive OPI→DPF translation.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
+			"Default true so a second replica does not write the same DpuOperatorConfig.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
@@ -167,6 +170,11 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "9ab915d2.opi.nvidia.com",
+		Client: client.Options{
+			Cache: &client.CacheOptions{
+				DisableFor: []client.Object{&corev1.Secret{}},
+			},
+		},
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -206,17 +214,33 @@ func main() {
 		setupLog.Info("Registered mapping", "name", spec.Metadata.Name, "source", spec.Source.Kind, "emits", len(spec.Emit))
 	}
 
-	// Lifecycle Manager (Hybrid pattern): watch DpuOperatorConfig and ensure the
-	// requested vendor operator is installed/pinned. Placeholder for Helm/OLM.
+	// Lifecycle Manager (Hybrid pattern): watch DpuOperatorConfig and run
+	// EnsureInstalled. ClusterHelmClient observes Helm storage through
+	// uncached list/get (Secrets are DisableFor) and mutates only a
+	// dedicated probe release. The live dpf-operator name is refused.
+	// ClusterOLM observes Subscriptions when operators.coreos.com exists.
+	// Missing Helm/OLM storage falls back to DetectingInstaller; no CLI.
 	registerUnstructured(scheme, lifecycle.DpuOperatorConfigGVK)
+	dc, err := discovery.NewDiscoveryClientForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "Failed to create discovery client")
+		os.Exit(1)
+	}
 	if err := (&lifecycle.LifecycleManager{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Discovery: dc,
+		Helm:      lifecycle.NewClusterHelmClient(mgr.GetClient()),
+		OLM:       lifecycle.NewClusterOLMClient(mgr.GetClient(), mgr.GetRESTMapper()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "LifecycleManager")
 		os.Exit(1)
 	}
 	setupLog.Info("Registered Lifecycle Manager", "watches", lifecycle.DpuOperatorConfigGVK.Kind)
+	if err := lifecycle.SetupDpuOperatorConfigWebhook(mgr); err != nil {
+		setupLog.Error(err, "Failed to create webhook", "webhook", "DpuOperatorConfig")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

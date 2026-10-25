@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/ext"
 )
 
 var (
@@ -38,6 +39,7 @@ func env() (*cel.Env, error) {
 			cel.Variable("item", cel.DynType),
 			cel.Variable("children", cel.ListType(cel.DynType)),
 			cel.OptionalTypes(),
+			ext.Strings(),
 		)
 	})
 	return celEnv, celErr

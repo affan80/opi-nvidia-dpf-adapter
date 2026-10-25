@@ -45,6 +45,7 @@ Every `to:` path in `dataprocessingunit.yaml` and
 |---|---|
 | `DPUDevice.spec.serialNumber` | required |
 | `DPUFlavor.spec.dpuMode` | present |
+| `DPUFlavor.spec.nvconfig` | official 26.4.0 HBN (`PF_TOTAL_SF=20`, `PF_SF_BAR_SIZE=10`); flavor spec immutable after create |
 | `BFB.spec.url` | required |
 | `DPU.spec.{dpuNodeName,dpuDeviceName,dpuFlavor,bfb,serialNumber,nodeEffect.noEffect}` | required set + `bfb`/`blueFieldSoftware` one-of |
 | `DPUService.spec.{serviceID,helmChart.source.repoURL,helmChart.source.version,interfaces,paused,security.privileged}` | `helmChart` required; `security.privileged` required by CEL when `deployInCluster` is false |

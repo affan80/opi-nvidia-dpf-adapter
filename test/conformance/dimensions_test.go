@@ -182,7 +182,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 				Expect(k8sClient.Create(ctx, cfg)).To(Succeed())
 				DeferCleanup(func() { _ = k8sClient.Delete(ctx, cfg) })
 
-				lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme}
+				lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme, Probe: lifecycle.ReadyClusterProbe()}
 				_, err := lcm.Reconcile(ctx, reconcile.Request{
 					NamespacedName: types.NamespacedName{Name: name},
 				})
@@ -221,7 +221,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		DeferCleanup(func() { _ = k8sClient.Delete(ctx, cfg) })
 
 		nn := types.NamespacedName{Name: name}
-		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme}
+		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme, Probe: lifecycle.ReadyClusterProbe()}
 		for i := range 3 {
 			_, err := lcm.Reconcile(ctx, reconcile.Request{NamespacedName: nn})
 			Expect(err).NotTo(HaveOccurred(), "reconcile %d", i)
@@ -253,7 +253,7 @@ var _ = Describe("Conformance dimension: version-skew behaviour", func() {
 		got := getObject(lifecycle.DpuOperatorConfigGVK, types.NamespacedName{Name: good.GetName()})
 		Expect(lifecycle.ResolveVendor(got)).To(Equal("nvidia"))
 
-		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme}
+		lcm := &lifecycle.LifecycleManager{Client: k8sClient, Scheme: scheme, Probe: lifecycle.ReadyClusterProbe()}
 		_, err := lcm.Reconcile(ctx, reconcile.Request{
 			NamespacedName: types.NamespacedName{Name: good.GetName()},
 		})

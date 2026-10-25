@@ -44,10 +44,21 @@ import (
 // will starve the translator of hardware identity.
 const (
 	SerialNumberAnnotation = "provisioning.dpu.nvidia.com/serial-number"
+	PCIAddressAnnotation   = "provisioning.dpu.nvidia.com/pci-address"
 	BFBURLAnnotation       = "dpu.nvidia.com/bfb-url"
 	FlavorAnnotation       = "dpu.nvidia.com/flavor"
 	BFBNameAnnotation      = "dpu.nvidia.com/bfb"
 )
+
+// DPFPCIAddress converts a sysfs PCI address (0000:0f:00.0) to the DPF
+// DPU.spec.pciAddress form (0000-0f-00).
+func DPFPCIAddress(pci string) string {
+	s := strings.ReplaceAll(strings.TrimSpace(pci), ":", "-")
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		s = s[:i]
+	}
+	return s
+}
 
 // PCI vendor IDs of the DPU vendors this plugin can enumerate.
 //

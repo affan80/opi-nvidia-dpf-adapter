@@ -42,7 +42,7 @@ const (
 	chartNFName      = "hbn"
 	imageNFName      = "legacy-fw"
 	helmRepoURL      = "https://helm.ngc.nvidia.com/nvidia/doca"
-	helmChartVersion = "v25.10.1"
+	helmChartVersion = "v26.4.0"
 )
 
 var _ = Describe("ServiceFunctionChain translation", func() {

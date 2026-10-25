@@ -104,7 +104,7 @@ func TestApplyForEachChart(t *testing.T) {
 				map[string]any{"name": testNFName, "chart": map[string]any{
 					"repository": "https://helm.ngc.nvidia.com/nvidia/doca",
 					"name":       testNFName,
-					"version":    "v25.10.1",
+					"version":    "v26.4.0",
 				}},
 			},
 		},
@@ -143,6 +143,7 @@ func TestLoadRealMappings(t *testing.T) {
 			"name": "worker-1",
 			"annotations": map[string]any{
 				"provisioning.dpu.nvidia.com/serial-number": "MT1234",
+				"provisioning.dpu.nvidia.com/pci-address":   "0000-03-00",
 				"dpu.nvidia.com/bfb-url":                    "https://example.invalid/bf.bfb",
 			},
 		},
@@ -166,6 +167,9 @@ func TestLoadRealMappings(t *testing.T) {
 	}
 	var sawDPU bool
 	for _, o := range objs {
+		if o.GetKind() == "DPUDevice" && o.GetName() != "mt1234" {
+			t.Errorf("DPUDevice name=%s, want lower(serial) mt1234", o.GetName())
+		}
 		if o.GetKind() != "DPU" {
 			continue
 		}
@@ -173,6 +177,12 @@ func TestLoadRealMappings(t *testing.T) {
 		// DPF DPU.spec.bfb is the BFB CR name (string), not {name: ...}.
 		if bfb := nested(o.Object, "spec", "bfb"); bfb != "bf-bundle" {
 			t.Errorf("spec.bfb=%#v, want string bf-bundle", bfb)
+		}
+		if got := nested(o.Object, "spec", "dpuDeviceName"); got != "mt1234" {
+			t.Errorf("spec.dpuDeviceName=%#v, want mt1234", got)
+		}
+		if got := nested(o.Object, "spec", "pciAddress"); got != "0000-03-00" {
+			t.Errorf("spec.pciAddress=%#v, want 0000-03-00", got)
 		}
 	}
 	if !sawDPU {

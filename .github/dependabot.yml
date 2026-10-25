@@ -7,6 +7,18 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    # v0.25 of controller-runtime is Kubernetes 1.37. Lab k3s is v1.36.4
+    # (config/versions.yaml goModule v0.36.0). Stay on v0.24.x until the
+    # cluster pin moves.
+    ignore:
+      - dependency-name: sigs.k8s.io/controller-runtime
+        versions: [">=0.25.0"]
+      - dependency-name: k8s.io/api
+        versions: [">=0.37.0"]
+      - dependency-name: k8s.io/apimachinery
+        versions: [">=0.37.0"]
+      - dependency-name: k8s.io/client-go
+        versions: [">=0.37.0"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

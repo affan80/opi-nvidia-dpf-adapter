@@ -148,6 +148,7 @@ emit:
 # conditions by type, so if this mapping and dataprocessingunit.yaml both
 # wrote `Ready` onto the same source they would overwrite each other every
 # reconcile. See docs/multi-vendor.md, "Condition ownership".
+# DSCReady is added beside Ready; the daemon condition is not rewritten.
 status:
   # Ownership gate, matching the per-emit guards above: write nothing at all on
   # a card this mapping does not claim.

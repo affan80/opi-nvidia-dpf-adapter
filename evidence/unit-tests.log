@@ -1,0 +1,18 @@
+go run ./hack/gen-rbac
+wrote pkg/translation/zz_generated_rbac.go
+"/Users/kartikey0104/Desktop/opi-dpf-adapter/opi-nvidia-dpf-adapter/bin/controller-gen" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+"/Users/kartikey0104/Desktop/opi-dpf-adapter/opi-nvidia-dpf-adapter/bin/controller-gen" object:headerFile="hack/boilerplate.go.txt",year=2026 paths="./..."
+go fmt ./...
+go vet ./...
+Setting up envtest binaries for Kubernetes version 1.36...
+/Users/kartikey0104/Desktop/opi-dpf-adapter/opi-nvidia-dpf-adapter/bin/k8s/1.36.0-darwin-arm64KUBEBUILDER_ASSETS="/Users/kartikey0104/Desktop/opi-dpf-adapter/opi-nvidia-dpf-adapter/bin/k8s/1.36.0-darwin-arm64" go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
+	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/cmd		coverage: 0.0% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/cmd/vsp	2.648s	coverage: 5.5% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/hack/gen-rbac	3.197s	coverage: 57.8% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/discovery	0.775s	coverage: 80.4% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/lifecycle	2.015s	coverage: 89.2% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/mapping	1.369s	coverage: 80.3% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/translation	7.153s	coverage: 72.7% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/vsp	4.665s	coverage: 73.0% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/test/conformance	11.413s	coverage: [no statements]
+	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/test/utils		coverage: 0.0% of statements

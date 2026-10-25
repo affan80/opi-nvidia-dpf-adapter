@@ -198,15 +198,24 @@ func main() {
 		setupLog.Error(err, "Failed to load FieldMapping documents", "mapping-dir", mappingDir)
 		os.Exit(1)
 	}
+	// Translation watches DpuOperatorConfig and CRDs so a source created
+	// while the LCM Helm install is still creating DPF APIs is requeued
+	// when VendorOperatorReady flips or a target CRD is served. Both types
+	// have to be in the scheme before those watches are registered.
+	registerUnstructured(scheme, lifecycle.DpuOperatorConfigGVK)
+	registerUnstructured(scheme, schema.GroupVersionKind{
+		Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition",
+	})
 	for _, spec := range specs {
 		registerUnstructured(scheme, spec.Source.GVK())
 		for _, emit := range spec.Emit {
 			registerUnstructured(scheme, emit.Target.GVK())
 		}
 		rec := &translation.Reconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Spec:   spec,
+			Client:           mgr.GetClient(),
+			Scheme:           mgr.GetScheme(),
+			Spec:             spec,
+			TargetsInstalled: translation.MapperTargetsInstalled(mgr.GetRESTMapper()),
 		}
 		if err := rec.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create controller", "mapping", spec.Metadata.Name, "kind", spec.Source.Kind)

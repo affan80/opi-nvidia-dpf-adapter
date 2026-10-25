@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -31,7 +32,6 @@ const defaultSysfsPCI = "/sys/bus/pci/devices"
 const (
 	productBlueField2  = "BlueField-2"
 	productBlueField3  = "BlueField-3"
-	productBlueField   = "BlueField"
 	productPensandoDSC = "Pensando DSC"
 	productMarvellDPU  = "Marvell DPU"
 )
@@ -63,8 +63,8 @@ func (v vendorSpec) productName(deviceID uint16) string {
 
 // supportedVendors is the enumerator's whole notion of "is this a DPU".
 //
-// NVIDIA keeps a fallback: an unrecognised 0x15b3 device still enumerates as
-// a generic BlueField, which is the behaviour the annotator has always had.
+// NVIDIA has no fallback: only known BlueField PFs enumerate. The SoC
+// management function 0xc2d3 must not become a second DPU.
 //
 // AMD and Marvell are deliberately strict. On lab host dh1 the AMD DSC2-100
 // puts four PCI *bridges* behind the same 0x1dd8 vendor (one Elba upstream
@@ -81,7 +81,8 @@ var supportedVendors = map[uint16]vendorSpec{
 			0xa2dc: productBlueField3,
 			0xa2dd: productBlueField3,
 		},
-		fallback: productBlueField,
+		// No fallback: 0xc2d3 is the SoC management interface. Naming it
+		// BlueField would invent a second DPU without a stable serial.
 	},
 	AMDVendorID: {
 		name: "AMD Pensando",
@@ -175,7 +176,27 @@ func (p PCIEnumerator) Enumerate() ([]Device, error) {
 			ProductName:  name,
 		})
 	}
-	return devices, nil
+	return uniqueBySerial(devices), nil
+}
+
+// uniqueBySerial keeps one function per board serial, lowest PCI address.
+func uniqueBySerial(devices []Device) []Device {
+	if len(devices) < 2 {
+		return devices
+	}
+	sort.Slice(devices, func(i, j int) bool {
+		return devices[i].PCIAddress < devices[j].PCIAddress
+	})
+	seen := make(map[string]struct{}, len(devices))
+	out := make([]Device, 0, len(devices))
+	for _, d := range devices {
+		if _, ok := seen[d.SerialNumber]; ok {
+			continue
+		}
+		seen[d.SerialNumber] = struct{}{}
+		out = append(out, d)
+	}
+	return out
 }
 
 func pciFunction(addr string) string {
@@ -203,19 +224,31 @@ func readPCIID(path string) (uint16, error) {
 // readSerial prefers a sysfs serial file, then VPD keyword SN, then the
 // PCIe Device Serial Number extended capability in config space.
 func readSerial(devDir string) (string, error) {
-	if b, err := os.ReadFile(filepath.Join(devDir, "serial")); err == nil {
-		if s := strings.TrimSpace(string(b)); s != "" {
-			return s, nil
+	for _, name := range []string{"serial", "vpd", "config"} {
+		path := filepath.Join(devDir, name)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			if os.IsPermission(err) {
+				return "", fmt.Errorf("permission denied reading %s (need root for VPD/config)", path)
+			}
+			return "", fmt.Errorf("read %s: %w", path, err)
 		}
-	}
-	if b, err := os.ReadFile(filepath.Join(devDir, "vpd")); err == nil {
-		if sn, ok := vpdSerial(b); ok {
-			return sn, nil
-		}
-	}
-	if b, err := os.ReadFile(filepath.Join(devDir, "config")); err == nil {
-		if sn, ok := configDSN(b); ok {
-			return sn, nil
+		switch name {
+		case "serial":
+			if s := strings.TrimSpace(string(b)); s != "" {
+				return s, nil
+			}
+		case "vpd":
+			if sn, ok := vpdSerial(b); ok {
+				return sn, nil
+			}
+		case "config":
+			if sn, ok := configDSN(b); ok {
+				return sn, nil
+			}
 		}
 	}
 	return "", fmt.Errorf("no serial in serial, vpd, or config DSN")

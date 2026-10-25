@@ -133,7 +133,7 @@ func (r *LifecycleManager) now() time.Time {
 // is host-side (mlxfwreset) and is not run from this adapter.
 // +kubebuilder:rbac:groups=provisioning.dpu.nvidia.com,resources=dpus,verbs=get;list
 // +kubebuilder:rbac:groups=operator.dpu.nvidia.com,resources=dpfoperatorconfigs,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 // Helm storage (sh.helm.release.v1.*) is read to classify unmanaged vs owned.
 // No create/delete: claim may patch owner labels only.
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;update;patch

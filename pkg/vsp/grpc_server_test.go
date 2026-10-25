@@ -81,18 +81,17 @@ func TestOpiAPIGetDevicesUsesEnumerator(t *testing.T) {
 	waitStop(t, cancel, errc)
 }
 
-func TestNetworkFunctionAcknowledgesWithoutProvisioning(t *testing.T) {
+func TestNetworkFunctionDoesNotProvision(t *testing.T) {
+	// Default gate refuses. Success is covered by handoff_test.go after
+	// a DPUService intent is accepted; this test keeps the RPC from
+	// installing anything on the happy path's absence.
 	ctx, conn, errc, cancel := startTestServer(t)
-	nf := pb.NewNetworkFunctionServiceClient(conn)
-	req := &pb.NFRequest{Input: "00:00:00:00:00:01", Output: "00:00:00:00:00:02"}
-
-	if _, err := nf.CreateNetworkFunction(ctx, req); err != nil {
-		t.Fatalf("CreateNetworkFunction: %v", err)
+	_, err := pb.NewNetworkFunctionServiceClient(conn).CreateNetworkFunction(ctx, &pb.NFRequest{
+		Input: "00:00:00:00:00:01", Output: "00:00:00:00:00:02",
+	})
+	if err == nil {
+		t.Fatal("CreateNetworkFunction must not succeed before DPF accepts a DPUService")
 	}
-	if _, err := nf.DeleteNetworkFunction(ctx, req); err != nil {
-		t.Fatalf("DeleteNetworkFunction: %v", err)
-	}
-
 	waitStop(t, cancel, errc)
 }
 
@@ -137,20 +136,26 @@ func waitStop(t *testing.T, cancel context.CancelFunc, errc chan error) {
 func waitDial(t *testing.T, sock string) *grpc.ClientConn {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
+	var last error
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(sock); err == nil {
-			break
+		raw, err := net.DialTimeout("unix", sock, 100*time.Millisecond)
+		if err != nil {
+			last = err
+			time.Sleep(20 * time.Millisecond)
+			continue
 		}
-		time.Sleep(20 * time.Millisecond)
+		_ = raw.Close()
+		conn, err := grpc.NewClient("passthrough:///"+sock,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+			}),
+		)
+		if err != nil {
+			t.Fatalf("dial %s: %v", sock, err)
+		}
+		return conn
 	}
-	conn, err := grpc.NewClient("passthrough:///"+sock,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
-		}),
-	)
-	if err != nil {
-		t.Fatalf("dial %s: %v", sock, err)
-	}
-	return conn
+	t.Fatalf("listen %s: %v", sock, last)
+	return nil
 }

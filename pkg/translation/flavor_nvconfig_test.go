@@ -76,6 +76,7 @@ func TestReconcileDPUFlavorHonorsCurrentSFAnnotations(t *testing.T) {
 	src.SetUID("dpu-uid-reboot")
 	src.SetAnnotations(map[string]string{
 		"provisioning.dpu.nvidia.com/serial-number": "MT2321XZ0KVX",
+		"provisioning.dpu.nvidia.com/pci-address":   "0000-0f-00",
 		"dpu.nvidia.com/bfb-url":                    "https://example.invalid/bf.bfb",
 		"dpu.nvidia.com/pf-total-sf":                "32",
 		"dpu.nvidia.com/pf-sf-bar-size":             "8",

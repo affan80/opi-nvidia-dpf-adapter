@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -82,7 +83,7 @@ func TestPCIEnumeratorReadsConfigDSN(t *testing.T) {
 	// DSN extended cap at 0x100, cap ID 0x0003, next=0
 	binary.LittleEndian.PutUint32(cfg[0x100:], uint32(pcieCapDSN))
 	copy(cfg[0x104:], []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08})
-	writePCIDevice(t, root, "0000:03:00.0", NVIDIAVendorID, 0x9999, map[string][]byte{
+	writePCIDevice(t, root, "0000:03:00.0", NVIDIAVendorID, 0xa2dc, map[string][]byte{
 		"config": cfg,
 	})
 
@@ -93,8 +94,8 @@ func TestPCIEnumeratorReadsConfigDSN(t *testing.T) {
 	if len(got) != 1 || got[0].SerialNumber != "0102030405060708" {
 		t.Fatalf("%+v", got)
 	}
-	if got[0].ProductName != "BlueField" {
-		t.Errorf("unknown device id should fall back, got %s", got[0].ProductName)
+	if got[0].ProductName != productBlueField3 {
+		t.Errorf("product=%s", got[0].ProductName)
 	}
 }
 
@@ -116,8 +117,11 @@ func TestPCIEnumeratorFindsAMDPensando(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("got %d devices, want 3 AMD functions", len(got))
+	if len(got) != 1 {
+		t.Fatalf("got %d devices, want 1 board serial (three functions share DSCEXAMPLE0001)", len(got))
+	}
+	if got[0].PCIAddress != "0000:19:00.0" {
+		t.Errorf("stable identity should keep the lowest PCI address, got %s", got[0].PCIAddress)
 	}
 	for _, d := range got {
 		if d.VendorID != AMDVendorID {
@@ -210,6 +214,90 @@ func TestPCIEnumeratorMixedVendorBus(t *testing.T) {
 		if byProduct[product] != serial {
 			t.Errorf("%s serial=%q, want %q", product, byProduct[product], serial)
 		}
+	}
+}
+
+func TestSupportedBlueFieldDeviceIDs(t *testing.T) {
+	spec := supportedVendors[NVIDIAVendorID]
+	for _, tc := range []struct {
+		id   uint16
+		want string
+	}{
+		{0xa2d2, productBlueField2},
+		{0xa2d6, productBlueField2},
+		{0xa2dc, productBlueField3},
+		{0xa2dd, productBlueField3},
+	} {
+		if got := spec.productName(tc.id); got != tc.want {
+			t.Errorf("%#x product=%q, want %q", tc.id, got, tc.want)
+		}
+	}
+	if spec.fallback != "" {
+		t.Fatal("NVIDIA fallback would name SoC management (0xc2d3) as a BlueField")
+	}
+	if spec.productName(0xc2d3) != "" {
+		t.Fatal("0xc2d3 is the BlueField SoC management interface, not a DPU PF")
+	}
+}
+
+func TestPCIEnumeratorSkipsNVIDIAManagementWithoutFailing(t *testing.T) {
+	root := t.TempDir()
+	writePCIDevice(t, root, "0000:0f:00.0", NVIDIAVendorID, 0xa2d6, map[string][]byte{
+		"vpd": buildVPD("MT2321XZ0KVX"),
+	})
+	// Function 0 management (seen as 0xc2d3 on some firmware) has no serial.
+	writePCIDevice(t, root, "0000:10:00.0", NVIDIAVendorID, 0xc2d3, nil)
+
+	got, err := PCIEnumerator{SysfsRoot: root}.Enumerate()
+	if err != nil {
+		t.Fatalf("management function must not abort the bus: %v", err)
+	}
+	if len(got) != 1 || got[0].PCIAddress != "0000:0f:00.0" || got[0].SerialNumber != "MT2321XZ0KVX" {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestPCIEnumeratorDeduplicatesSameSerial(t *testing.T) {
+	root := t.TempDir()
+	writePCIDevice(t, root, "0000:0f:00.0", NVIDIAVendorID, 0xa2d6, map[string][]byte{
+		"vpd": buildVPD("MT2321XZ0KVX"),
+	})
+	writePCIDevice(t, root, "0000:11:00.0", NVIDIAVendorID, 0xa2d6, map[string][]byte{
+		"vpd": buildVPD("MT2321XZ0KVX"),
+	})
+
+	got, err := PCIEnumerator{SysfsRoot: root}.Enumerate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("same board serial listed %d times: %+v", len(got), got)
+	}
+	if got[0].PCIAddress != "0000:0f:00.0" {
+		t.Errorf("stable identity should keep the lowest PCI address, got %s", got[0].PCIAddress)
+	}
+}
+
+func TestPCIEnumeratorPermissionDeniedIsError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read mode-0 files; this path is for an unprivileged VSP")
+	}
+	root := t.TempDir()
+	writePCIDevice(t, root, "0000:0f:00.0", NVIDIAVendorID, 0xa2d6, map[string][]byte{
+		"vpd": []byte("secret"),
+	})
+	vpd := filepath.Join(root, "0000:0f:00.0", "vpd")
+	if err := os.Chmod(vpd, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(vpd, 0o644) })
+
+	_, err := PCIEnumerator{SysfsRoot: root}.Enumerate()
+	if err == nil {
+		t.Fatal("expected permission error, not a silent missing serial")
+	}
+	if !strings.Contains(err.Error(), "permission") && !strings.Contains(err.Error(), "denied") {
+		t.Fatalf("want permission error, got %v", err)
 	}
 }
 

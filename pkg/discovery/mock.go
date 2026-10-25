@@ -16,6 +16,8 @@ limitations under the License.
 
 package discovery
 
+import "sync"
+
 // MockEnumerator returns a fixed device list. Use this on kind or any
 // machine without a BlueField on the PCI bus. Swap for a PCI enumerator
 // on a real worker without changing Annotator.
@@ -27,6 +29,32 @@ func (m MockEnumerator) Enumerate() ([]Device, error) {
 	out := make([]Device, len(m.Devices))
 	copy(out, m.Devices)
 	return out, nil
+}
+
+// MutableEnumerator is a live bus the tests can change between refreshes
+// (add, remove, reboot). GetDevices and the annotator must re-read it.
+type MutableEnumerator struct {
+	mu      sync.Mutex
+	Devices []Device
+	Err     error
+}
+
+func (m *MutableEnumerator) Enumerate() ([]Device, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	out := make([]Device, len(m.Devices))
+	copy(out, m.Devices)
+	return out, nil
+}
+
+func (m *MutableEnumerator) Set(devices []Device, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Devices = devices
+	m.Err = err
 }
 
 // StaticDevice builds the one-DPU fixture local e2e uses. vendorID picks

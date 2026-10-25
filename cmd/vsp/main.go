@@ -138,7 +138,9 @@ func main() {
 
 	if grpcOnly {
 		setupLog.Info("starting VSP gRPC only", "socket", grpcSocket, "pci-mode", usePCI)
-		if err := vsp.NewServer(enumerator, grpcSocket).Start(ctrl.SetupSignalHandler()); err != nil {
+		srv := vsp.NewServer(enumerator, grpcSocket)
+		// No cluster client: Create/Delete must not report DPF success.
+		if err := srv.Start(ctrl.SetupSignalHandler()); err != nil {
 			setupLog.Error(err, "vendor plugin gRPC server exited")
 			os.Exit(1)
 		}
@@ -146,6 +148,7 @@ func main() {
 	}
 
 	registerUnstructured(scheme, discovery.DataProcessingUnitGVK)
+	registerUnstructured(scheme, vsp.DPUServiceGVK)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -172,7 +175,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := mgr.Add(vsp.NewServer(enumerator, grpcSocket)); err != nil {
+	srv := vsp.NewServer(enumerator, grpcSocket)
+	srv.Handoff = vsp.NewClusterHandoff(mgr.GetClient())
+	if err := mgr.Add(srv); err != nil {
 		setupLog.Error(err, "unable to add vendor plugin gRPC server")
 		os.Exit(1)
 	}

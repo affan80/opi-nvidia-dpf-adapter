@@ -105,8 +105,14 @@ var _ = Describe("Conformance dimension: detection handshake", func() {
 				Expect(opiDevs.GetDevices()).To(HaveKey(tc.pci),
 					"the dpu-api and OPI-API surfaces disagree about which devices exist")
 
-				By("acknowledging the CNI add/delete path")
+				By("refusing CreateNetworkFunction before a DPF DPUService is accepted")
 				nf := &pb.NFRequest{Input: "pf0", Output: "vf0"}
+				_, err = pb.NewNetworkFunctionServiceClient(conn).CreateNetworkFunction(ctx, nf)
+				Expect(err).To(HaveOccurred(), "success before DPF intent is a false attach")
+				Expect(err.Error()).To(ContainSubstring("DPUService"))
+
+				By("acknowledging CNI add/delete only after the DPF handoff accepts")
+				srv.Handoff = vsp.StaticHandoff{}
 				_, err = pb.NewNetworkFunctionServiceClient(conn).CreateNetworkFunction(ctx, nf)
 				Expect(err).NotTo(HaveOccurred())
 				_, err = pb.NewNetworkFunctionServiceClient(conn).DeleteNetworkFunction(ctx, nf)

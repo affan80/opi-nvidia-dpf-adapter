@@ -1,0 +1,93 @@
+go run ./hack/gen-rbac
+go: downloading github.com/google/cel-go v0.26.0
+go: downloading sigs.k8s.io/yaml v1.6.0
+go: downloading k8s.io/apimachinery v0.36.0
+go: downloading go.yaml.in/yaml/v2 v2.4.3
+go: downloading cel.dev/expr v0.25.1
+go: downloading google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409
+go: downloading github.com/stoewer/go-strcase v1.3.0
+go: downloading github.com/antlr4-go/antlr/v4 v4.13.0
+go: downloading golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409
+go: downloading sigs.k8s.io/randfill v1.0.0
+go: downloading sigs.k8s.io/structured-merge-diff/v6 v6.3.2
+go: downloading gopkg.in/inf.v0 v0.9.1
+go: downloading sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
+go: downloading k8s.io/klog/v2 v2.140.0
+go: downloading k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a
+go: downloading k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
+go: downloading github.com/fxamacker/cbor/v2 v2.9.0
+go: downloading golang.org/x/net v0.49.0
+go: downloading github.com/x448/float16 v0.8.4
+go: downloading github.com/go-logr/logr v1.4.3
+go: downloading github.com/json-iterator/go v1.1.12
+go: downloading github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
+go: downloading github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+go: downloading golang.org/x/text v0.33.0
+wrote pkg/translation/zz_generated_rbac.go
+mkdir -p "/src/bin"
+Downloading sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.0
+go: downloading sigs.k8s.io/controller-tools v0.21.0
+go: downloading github.com/fatih/color v1.19.0
+go: downloading k8s.io/apiextensions-apiserver v0.36.0
+go: downloading golang.org/x/tools v0.44.0
+go: downloading gopkg.in/yaml.v3 v3.0.1
+go: downloading gopkg.in/yaml.v2 v2.4.0
+go: downloading github.com/gobuffalo/flect v1.0.3
+go: downloading k8s.io/api v0.36.0
+go: downloading github.com/spf13/cobra v1.10.2
+go: downloading k8s.io/kube-openapi v0.0.0-20260427204847-8949caaa1199
+go: downloading k8s.io/code-generator v0.36.0
+go: downloading k8s.io/gengo/v2 v2.0.0-20250922181213-ec3ebc5fd46b
+go: downloading sigs.k8s.io/structured-merge-diff/v6 v6.4.0
+go: downloading github.com/fxamacker/cbor/v2 v2.9.1
+go: downloading k8s.io/utils v0.0.0-20260319190234-28399d86e0b5
+go: downloading golang.org/x/net v0.53.0
+go: downloading go.yaml.in/yaml/v2 v2.4.4
+go: downloading github.com/mattn/go-isatty v0.0.20
+go: downloading github.com/mattn/go-colorable v0.1.14
+go: downloading github.com/spf13/pflag v1.0.10
+go: downloading golang.org/x/sys v0.43.0
+go: downloading github.com/google/gnostic-models v0.7.1
+go: downloading golang.org/x/text v0.36.0
+go: downloading go.yaml.in/yaml/v3 v3.0.4
+go: downloading github.com/go-openapi/swag v0.26.0
+go: downloading github.com/go-openapi/jsonreference v0.21.5
+go: downloading github.com/go-openapi/swag/cmdutils v0.26.0
+go: downloading github.com/go-openapi/swag/yamlutils v0.26.0
+go: downloading github.com/go-openapi/swag/jsonutils v0.26.0
+go: downloading github.com/go-openapi/swag/mangling v0.26.0
+go: downloading github.com/go-openapi/swag/fileutils v0.26.0
+go: downloading github.com/go-openapi/swag/jsonname v0.26.0
+go: downloading github.com/go-openapi/swag/loading v0.26.0
+go: downloading github.com/go-openapi/swag/netutils v0.26.0
+go: downloading github.com/go-openapi/swag/conv v0.26.0
+go: downloading github.com/go-openapi/swag/stringutils v0.26.0
+go: downloading github.com/go-openapi/swag/typeutils v0.26.0
+go: downloading github.com/go-openapi/jsonpointer v0.23.1
+go: downloading golang.org/x/mod v0.35.0
+go: downloading golang.org/x/sync v0.20.0
+"/src/bin/controller-gen" rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+"/src/bin/controller-gen" object:headerFile="hack/boilerplate.go.txt",year=2026 paths="./..."
+go fmt ./...
+go vet ./...
+go: downloading github.com/onsi/gomega v1.39.0
+go: downloading github.com/google/go-cmp v0.7.0
+Downloading sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.24.1
+go: downloading sigs.k8s.io/controller-runtime/tools/setup-envtest v0.24.1
+go: downloading github.com/spf13/afero v1.12.0
+go: downloading go.uber.org/zap v1.27.0
+go: downloading go.uber.org/multierr v1.10.0
+Setting up envtest binaries for Kubernetes version 1.36...
+/src/bin/k8s/1.36.2-linux-amd64KUBEBUILDER_ASSETS="/src/bin/k8s/1.36.2-linux-amd64" go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
+	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/cmd		coverage: 0.0% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/cmd/vsp	0.017s	coverage: 5.5% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/hack/gen-rbac	0.011s	coverage: 57.8% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/discovery	0.113s	coverage: 80.4% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/lifecycle	0.142s	coverage: 89.2% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/mapping	0.046s	coverage: 80.3% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/translation	4.188s	coverage: 72.7% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/vsp	0.084s	coverage: 73.0% of statements
+ok  	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/test/conformance	0.021s	coverage: [no statements]
+	github.com/kartikeyg0104/opi-nvidia-dpf-adapter/test/utils		coverage: 0.0% of statements

@@ -50,3 +50,7 @@
       hostPath:
         path: /sys
         type: Directory
+# Kind shares emptyDir via the opi-daemon sidecar. Hardware shares the
+# official hostPath with config/opi-daemon instead.
+- op: remove
+  path: /spec/template/spec/containers/1

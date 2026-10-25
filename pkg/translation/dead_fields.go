@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 
 // Live CRDs on dh2 lag the v26.4 fixtures (Helm --take-ownership left the
 // 2026-09-07 schemas). Mappings stay aligned to the fixtures. Server-side

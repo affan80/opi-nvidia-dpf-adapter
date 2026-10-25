@@ -105,6 +105,13 @@ Hardware identity (VSP → mapping, not LCM):
 | `dpu.nvidia.com/flavor` | Flavor / DPU name (`dpf-default-flavor` default) |
 | `dpu.nvidia.com/pf-total-sf` | DPUFlavor `PF_TOTAL_SF` (default official 20; `0` rejected) |
 | `dpu.nvidia.com/pf-sf-bar-size` | DPUFlavor `PF_SF_BAR_SIZE` (default official 10; `0` rejected) |
+| `dpu.nvidia.com/pf-bar2-enable` | `PF_BAR2_ENABLE` (default 0; explicit 0 kept) |
+| `dpu.nvidia.com/per-pf-num-sf` | `PER_PF_NUM_SF` (default 1) |
+| `dpu.nvidia.com/num-pf-msix-valid` | `NUM_PF_MSIX_VALID` (default 0) |
+| `dpu.nvidia.com/pf-num-pf-msix-valid` | `PF_NUM_PF_MSIX_VALID` (default 1) |
+| `dpu.nvidia.com/pf-num-pf-msix` | `PF_NUM_PF_MSIX` (default 228) |
+| `dpu.nvidia.com/num-of-vfs` | `NUM_OF_VFS` (default 46) |
+| `dpu.nvidia.com/lag-resource-allocation` | `LAG_RESOURCE_ALLOCATION` (default 1) |
 
 ## Service-chain resource graph
 

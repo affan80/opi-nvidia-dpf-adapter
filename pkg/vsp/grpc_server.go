@@ -21,8 +21,8 @@ limitations under the License.
 //
 //   - opi-api lifecycle (opi_api.lifecycle.v1alpha1.*) — what GrpcPlugin
 //     currently dials for Init/GetDevices
-//   - dpu-api Vendor.* — NetworkFunction (no-op ack; DPF owns Helm) plus
-//     the same handshake for the vendor-specific path
+//   - dpu-api Vendor.* — NetworkFunction is a DPF-intent handoff (no Helm)
+//     plus the same handshake for the vendor-specific path
 //
 // Generated stubs are imported; this repo does not run protoc.
 package vsp
@@ -48,6 +48,10 @@ import (
 // DefaultSocket is where dpu-operator's GrpcPlugin dials the VSP.
 const DefaultSocket = "/var/run/dpu-daemon/vendor-plugin/vendor-plugin.sock"
 
+// SocketDirPerm is the official PathManager contract: the socket
+// directory is root-only, not world-writable.
+const SocketDirPerm = 0o700
+
 const (
 	defaultIP   = "127.0.0.1"
 	defaultPort = int32(50051)
@@ -64,6 +68,9 @@ type Server struct {
 	Enumerator discovery.Enumerator
 	SocketPath string
 	Log        logr.Logger
+	// Handoff is the DPF-intent gate. Nil is RejectHandoff: Create/Delete
+	// must not return success before a DPUService is accepted.
+	Handoff NetworkFunctionHandoff
 
 	grpcServer *grpc.Server
 }
@@ -91,7 +98,7 @@ func (s *Server) GetDevices(_ context.Context, _ *pb.Empty) (*pb.DeviceListRespo
 	if s.Enumerator == nil {
 		return nil, fmt.Errorf("no hardware enumerator configured")
 	}
-	found, err := s.Enumerator.Enumerate()
+	found, err := discovery.LiveDevices(s.Enumerator)
 	if err != nil {
 		return nil, fmt.Errorf("enumerate nvidia dpu: %w", err)
 	}
@@ -113,25 +120,33 @@ func (s *Server) SetNumVfs(_ context.Context, req *pb.VfCount) (*pb.VfCount, err
 	return &pb.VfCount{VfCnt: req.GetVfCnt()}, nil
 }
 
-// CreateNetworkFunction acknowledges the daemon's CNI add path.
-//
-// The dpu-operator DpuSideManager calls this with two MAC addresses once a
-// network-function pod has both CNI attachments. NVIDIA chain members are
-// DPUService Helm charts emitted by the translation engine, so this RPC
-// must return success without provisioning anything itself. NFRequest has
-// no name field; input/output are the identity the daemon sends.
-func (s *Server) CreateNetworkFunction(_ context.Context, req *pb.NFRequest) (*pb.Empty, error) {
-	return s.ackNetworkFunction("CreateNetworkFunction", req)
+// CreateNetworkFunction is the daemon CNI-add handoff. It does not
+// install a Helm chart. Official DPF v26.4 creates that workload from a
+// DPUService; this adapter's translator is what applies that object.
+// Success is returned only after Handoff says that DPUService intent
+// was accepted. NFRequest has no name; input/output are the CNI identity.
+func (s *Server) CreateNetworkFunction(ctx context.Context, req *pb.NFRequest) (*pb.Empty, error) {
+	if err := handoffOrReject(s.Handoff).CreateIntentAccepted(ctx, req); err != nil {
+		s.Log.Info("CreateNetworkFunction refused; DPF intent not accepted",
+			"input", req.GetInput(), "output", req.GetOutput(), "err", err)
+		return nil, err
+	}
+	s.Log.Info("CreateNetworkFunction handed off; DPF DPUService already accepted",
+		"input", req.GetInput(), "output", req.GetOutput())
+	return &pb.Empty{}, nil
 }
 
-// DeleteNetworkFunction acknowledges the matching CNI del path.
-func (s *Server) DeleteNetworkFunction(_ context.Context, req *pb.NFRequest) (*pb.Empty, error) {
-	return s.ackNetworkFunction("DeleteNetworkFunction", req)
-}
-
-func (s *Server) ackNetworkFunction(rpc string, req *pb.NFRequest) (*pb.Empty, error) {
-	s.Log.Info("Received NetworkFunction request; DPF owns provisioning",
-		"rpc", rpc, "input", req.GetInput(), "output", req.GetOutput())
+// DeleteNetworkFunction is the daemon CNI-del handoff. It does not
+// uninstall Helm or delete a DPUService. Those stay with DPF / the
+// translator. Success means DPF was observable, not that a workload died.
+func (s *Server) DeleteNetworkFunction(ctx context.Context, req *pb.NFRequest) (*pb.Empty, error) {
+	if err := handoffOrReject(s.Handoff).DeleteIntentAccepted(ctx, req); err != nil {
+		s.Log.Info("DeleteNetworkFunction refused; DPF intent not observed",
+			"input", req.GetInput(), "output", req.GetOutput(), "err", err)
+		return nil, err
+	}
+	s.Log.Info("DeleteNetworkFunction detach handed off; DPF still owns Helm",
+		"input", req.GetInput(), "output", req.GetOutput())
 	return &pb.Empty{}, nil
 }
 
@@ -147,7 +162,7 @@ func (s *Server) Ping(_ context.Context, _ *pb.PingRequest) (*pb.PingResponse, e
 // Start serves gRPC on the unix socket until ctx is cancelled.
 // It implements manager.Runnable so cmd/vsp can mgr.Add it.
 func (s *Server) Start(ctx context.Context) error {
-	if err := os.MkdirAll(filepath.Dir(s.SocketPath), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.SocketPath), SocketDirPerm); err != nil {
 		return fmt.Errorf("create vendor plugin socket dir: %w", err)
 	}
 	if err := os.Remove(s.SocketPath); err != nil && !os.IsNotExist(err) {

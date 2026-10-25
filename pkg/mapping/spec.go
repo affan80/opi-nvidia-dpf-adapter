@@ -42,6 +42,8 @@ const Kind = "FieldMapping"
 // Each mapping therefore owns its own vendor-scoped condition instead --
 // DPFReady for NVIDIA, DSCReady for AMD. Validate rejects the reserved type at
 // load time, so a mapping that breaks the model cannot merge or start.
+// ApplyStatus copies Ready, and any other condition this mapping does not
+// own, onto the returned status without changing its schema fields.
 const ReservedConditionType = "Ready"
 
 // Spec is a data-driven OPI→DPF translation document. The controller

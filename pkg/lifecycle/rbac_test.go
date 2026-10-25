@@ -115,7 +115,7 @@ func TestManagerRoleGrantsLCMObserveVerbs(t *testing.T) {
 		{"config.openshift.io", "dpuoperatorconfigs", []string{"get", "list", "watch", "update"}},
 		{"provisioning.dpu.nvidia.com", "dpuclusters", []string{"get", "list", "watch"}},
 		{"operator.dpu.nvidia.com", "dpfoperatorconfigs", []string{"get", "list", "watch"}},
-		{"apiextensions.k8s.io", "customresourcedefinitions", []string{"get", "list"}},
+		{"apiextensions.k8s.io", "customresourcedefinitions", []string{"get", "list", "watch"}},
 	}
 	for _, n := range need {
 		if !roleHas(role, n.group, n.resource, n.verbs) {

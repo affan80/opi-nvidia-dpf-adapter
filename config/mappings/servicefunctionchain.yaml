@@ -143,6 +143,7 @@ emit:
 # status.conditions is on the pinned OPI fixture (and the lab CRD after the
 # 2026-10-23 align). Ready stays reserved for the daemon. No
 # x-kubernetes-preserve-unknown-fields on status — extra keys are rejected.
+# A DPFReady update copies the daemon Ready condition through unchanged.
 status:
   schema: conditions
   conditions:

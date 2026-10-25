@@ -1,0 +1,15 @@
+# Independently deployed OPI daemon. Shares hostPath /var/run/dpu-daemon
+# with config/overlays/hardware-vsp. Do not include this in config/default
+# (kind Restricted PSS forbids that hostPath).
+#
+#   kubectl apply -k config/opi-daemon
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: opi-nvidia-dpf-adapter-system
+namePrefix: opi-nvidia-dpf-adapter-
+resources:
+- daemonset.yaml
+images:
+- name: controller
+  newName: controller
+  newTag: latest

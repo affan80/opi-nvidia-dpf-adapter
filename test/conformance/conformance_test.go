@@ -151,6 +151,7 @@ metadata:
   name: conf-bf3
   annotations:
     provisioning.dpu.nvidia.com/serial-number: "MT1234CONF"
+    provisioning.dpu.nvidia.com/pci-address: "0000-03-00"
     dpu.nvidia.com/bfb-url: "https://example.invalid/fw.bfb"
 spec:
   dpuProductName: BlueField-3
@@ -499,6 +500,7 @@ metadata:
   name: iso-bf3
   annotations:
     provisioning.dpu.nvidia.com/serial-number: "MT1234ISO"
+    provisioning.dpu.nvidia.com/pci-address: "0000-03-00"
     dpu.nvidia.com/bfb-url: "https://example.invalid/fw.bfb"
 spec:
   dpuProductName: BlueField-3

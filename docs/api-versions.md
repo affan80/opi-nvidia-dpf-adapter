@@ -52,25 +52,32 @@ Every `to:` path in `dataprocessingunit.yaml` and
 | `DPUServiceInterface.spec.template.spec.template.spec.{interfaceType,service.*}` | `template` required; `service` required when `interfaceType=service` |
 | `DPUServiceChain.spec.template.spec.template.spec.switches` | `template` required; `switches` minItems 1 |
 
-### DPF mapping fields vs the CRDs still installed on dh2
+### DPF mapping fields vs the CRDs installed on dh2
 
-The operator **image** is v26.4.0. The provisioning CRDs that already
-existed on 2026-09-07 were labelled by Helm `--take-ownership` and were
-**not** replaced. Those live schemas are older than the fixtures:
+Rechecked 2026-10-25 against the storage schemas of the CRDs created
+2026-09-07. Those objects still have that creation time, and their
+OpenAPI now matches the v26.4.0 fixtures for every field this mapping
+writes. `DPU.spec.bfb` is not a plain required string: the live CEL is
+`exactly one of bfb or blueFieldSoftware must be set`, same as the
+fixture. `DPU.spec.pciAddress`, `DPU.spec.astraEnabled`,
+`DPUDevice.spec.cluster`, `DPUDevice.spec.bmcCredentialSecretName`, and
+`DPUService.spec.security.privileged` are present. The mapping does not
+write `astraEnabled`, `cluster`, or the BMC secret.
 
-| Field the mapping writes | v26.4 fixture | live CRD on dh2 |
+A supported NVIDIA source (`dpuProductName` starting with `BlueField`,
+serial, PCI `0000-0f-00`, and an http(s) BFB URL) emits four namespaced
+objects in `dpf-operator-system`, `provisioning.dpu.nvidia.com/v1alpha1`:
+
+| Kind | Required by the CRD | What the mapping sets |
 |---|---|---|
-| `DPUService.spec.security.privileged` | yes | **missing** (strict `unknown field`; translator drops it and retries) |
-| `DPU.spec.bfb` | one-of with `blueFieldSoftware` | listed in `required` |
-| `DPU.spec.astraEnabled` | yes | no (mapping does not write it) |
-| `DPUDevice.spec.cluster` / `bmcCredentialSecretName` | yes | no (mapping does not write them) |
+| `DPUDevice` | `spec.serialNumber` (minLength 1) | lower-cased serial as the name and `spec.serialNumber` |
+| `DPUFlavor` | none; `dpuMode` enum `dpu\|zero-trust\|nic`; nvconfig parameter `KEY=VALUE`, device `*` must be the only entry | `dpuMode=dpu`, one `nvconfig` entry `device=*` |
+| `BFB` | `spec.url` matching `^(http\|https)://.+$` | annotation `dpu.nvidia.com/bfb-url` |
+| `DPU` | `dpuDeviceName`, `dpuFlavor`, `dpuNodeName`, `nodeEffect`, `serialNumber`; exactly one of `bfb` / `blueFieldSoftware`; `pciAddress` pattern `0000-0f-00` | all five required fields, `spec.bfb` only, `nodeEffect.noEffect=true`, PCI annotation |
 
-The fields already used for the BlueField object on dh2
-(`serialNumber`, `dpuNodeName`, `bfb`, `nodeEffect.noEffect`) exist on
-both schemas. The DPU staying `Initializing` is not a field-name error.
-
-Do not upgrade those CRDs from this repo. This adapter does not own them,
-and the lab servers are not to be changed for a schema bump.
+`go test ./pkg/mapping/ -run TestNVIDIASourceEmitsSchemaValidDPFResources`
+runs that emit through the pinned CRD OpenAPI validators. A non-BlueField
+product emits nothing. Do not upgrade these CRDs from this repo.
 
 ### Mapping drop found against the OPI source schema
 
@@ -86,13 +93,14 @@ if any of them fail.
 
 ```bash
 # 1. Official gate: mapping to: paths exist on vendored CRDs,
+#    and a BlueField source emits a schema-valid DPUDevice/DPUFlavor/BFB/DPU.
 #    SFC fixtures still carry unmerged PR #6 chart fields,
 #    versions.yaml agrees with go.mod and the NVIDIA window.
 make verify-api
 
 # Same tests, named (what make verify-api runs):
 go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run \
-  'TestMappingFieldsExistInVendoredCRDs|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
+  'TestMappingFieldsExistInVendoredCRDs|TestNVIDIASourceEmitsSchemaValidDPFResources|TestNonBlueFieldSourceEmitsNoDPFResources|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
 
 # 2. FieldMapping JSON Schema vs Go structs + shipped YAML $schema
 go test ./pkg/mapping/ -count=1 -run \

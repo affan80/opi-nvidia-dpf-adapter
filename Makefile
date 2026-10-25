@@ -59,8 +59,8 @@ verify-manifests: generate-rbac controller-gen ## Fail if config/rbac/role.yaml 
 	rm -rf "$$tmpdir"
 
 .PHONY: verify-api
-verify-api: ## Fail if mappings write fields the pinned CRDs do not have.
-	go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run 'TestMappingFieldsExistInVendoredCRDs|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
+verify-api: ## Fail if mappings write fields the pinned CRDs do not have, or a BlueField source does not emit a schema-valid DPU set.
+	go test ./pkg/mapping/ ./pkg/lifecycle/ -count=1 -run 'TestMappingFieldsExistInVendoredCRDs|TestNVIDIASourceEmitsSchemaValidDPFResources|TestNonBlueFieldSourceEmitsNoDPFResources|TestSFCFixturesMatchPinnedHelmChartPatch|TestPinnedVersionsAgree|TestPinnedNVIDIAWindowMatchesVersionsYAML'
 
 .PHONY: manifests
 manifests: generate-rbac controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
@@ -154,9 +154,10 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager and VSP binaries.
+build: manifests generate fmt vet ## Build manager, VSP, and OPI daemon binaries.
 	go build -o bin/manager cmd/main.go
 	go build -o bin/vsp cmd/vsp/main.go
+	go build -o bin/opi-daemon cmd/opi-daemon/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -166,7 +167,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager and VSP binaries.
+docker-build: ## Build docker image with the manager, VSP, and OPI daemon binaries.
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push

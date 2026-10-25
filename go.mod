@@ -17,7 +17,7 @@ require (
 	github.com/openshift/dpu-operator/dpu-api v0.0.0-20260428194247-3092bcbe6a03
 	github.com/opiproject/opi-api/v1/gen/go/lifecycle v0.0.0-20251222163009-3317b3692163
 	google.golang.org/grpc v1.84.0
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af
+	google.golang.org/protobuf v1.37.0-rc.1
 	k8s.io/api v0.36.0
 	k8s.io/apimachinery v0.36.0
 	k8s.io/client-go v0.36.0

@@ -41,7 +41,7 @@ func TestPatchedGovulnDependencies(t *testing.T) {
 	for _, pin := range []struct {
 		pkg, ver, why string
 	}{
-		{"google.golang.org/grpc", "v1.83.2", "GO-2026-6348 / 6443 / 6061"},
+		{"google.golang.org/grpc", "v1.84.0", "GO-2026-6348 / 6443 / 6061 (floor v1.83.2)"},
 		{"github.com/google/cel-go", "v0.30.0", "GO-2026-6094 import-only"},
 		{"golang.org/x/net", "v0.60.0", "HTTP/2 set through GO-2026-6617"},
 		{"golang.org/x/text", "v0.42.0", "GO-2026-5970 (floor v0.39.0; x/net v0.60 needs 0.42)"},

@@ -57,7 +57,7 @@ const (
 
 // vendorField is the constrained enablement field on DpuOperatorConfig
 // (enum nvidia|amd on the pinned OPI fixture). It wins over the annotation.
-var vendorField = []string{"spec", vendorKey}
+var vendorField = []string{string(IntentSpec), vendorKey}
 
 // VendorAnnotation is the dual enablement path. spec.vendor is now on the
 // pinned CRD; the annotation stays so clusters that have not rolled the
@@ -157,7 +157,7 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if ts := cfg.GetDeletionTimestamp(); ts != nil && !ts.IsZero() {
-		return r.reconcileCleanup(ctx, cfg)
+		return ctrl.Result{}, r.reconcileCleanup(ctx, cfg)
 	}
 
 	if err := r.ensureCleanupFinalizer(ctx, req.NamespacedName, cfg); err != nil {
@@ -196,10 +196,10 @@ func (r *LifecycleManager) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *LifecycleManager) reconcileCleanup(ctx context.Context, cfg *unstructured.Unstructured) (ctrl.Result, error) {
+func (r *LifecycleManager) reconcileCleanup(ctx context.Context, cfg *unstructured.Unstructured) error {
 	log := logf.FromContext(ctx).WithName("lifecycle")
 	if !controllerutil.ContainsFinalizer(cfg, CleanupFinalizer) {
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	got := r.CleanupInstallations(ctx, cfg)
@@ -216,21 +216,21 @@ func (r *LifecycleManager) reconcileCleanup(ctx context.Context, cfg *unstructur
 		Reason:  got.Action,
 		Message: cleanupConditionMessage(got),
 	}}); err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, err
+		return err
 	}
 
 	if got.OpStatus == OpFailed && got.Action == CleanupFailed &&
 		got.Failure == ErrCleanupChanged.Error() {
-		return ctrl.Result{}, fmt.Errorf("%w", ErrCleanupChanged)
+		return fmt.Errorf("%w", ErrCleanupChanged)
 	}
 
 	if err := r.removeCleanupFinalizer(ctx, client.ObjectKeyFromObject(cfg)); err != nil {
 		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
+			return nil
 		}
-		return ctrl.Result{}, err
+		return err
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func cleanupConditionStatus(got CleanupResult) string {
@@ -368,7 +368,9 @@ func configLockKey(nn types.NamespacedName) string {
 	return "dpuoperatorconfig/" + nn.Namespace + "/" + nn.Name
 }
 
-func (r *LifecycleManager) ensureCleanupFinalizer(ctx context.Context, nn types.NamespacedName, cfg *unstructured.Unstructured) error {
+func (r *LifecycleManager) ensureCleanupFinalizer(
+	ctx context.Context, nn types.NamespacedName, cfg *unstructured.Unstructured,
+) error {
 	if !KnownVendor(ResolveVendor(cfg)) {
 		return nil
 	}

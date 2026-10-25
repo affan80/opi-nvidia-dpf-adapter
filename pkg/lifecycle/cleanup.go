@@ -38,6 +38,10 @@ const (
 	AdoptionPolicyAnnotation = "lifecycle.opi.nvidia.com/adoption-policy"
 	ReleaseModeLabel         = "lifecycle.opi.nvidia.com/mode"
 	helmStorageOwnerLabel    = "owner"
+	helmStorageOwner         = "helm"
+	helmReleaseNameLabel     = "name"
+	helmReleaseVersionLabel  = "version"
+	releaseExternallyOwned   = "release is externally owned"
 
 	OwnershipController = "controller"
 	OwnershipAdopted    = "adopted"
@@ -206,7 +210,7 @@ func ClassifyReleaseOwnership(rel HelmRelease) OwnershipClass {
 	mode := strings.TrimSpace(labels[ReleaseModeLabel])
 	// Helm stores every release with owner=helm. That is storage, not an
 	// external operator. A claimed pin keeps that label on purpose.
-	if helmOwner == "helm" {
+	if helmOwner == helmStorageOwner {
 		helmOwner = ""
 	}
 	if strings.ContainsAny(ours, " \t,;") || strings.ContainsAny(mode, " \t,;") {
@@ -214,9 +218,9 @@ func ClassifyReleaseOwnership(rel HelmRelease) OwnershipClass {
 			Reason: "ownership metadata is conflicting or malformed"}
 	}
 	if ours == "" && helmOwner == "" {
-		if strings.TrimSpace(labels[helmStorageOwnerLabel]) == "helm" {
-			return OwnershipClass{Kind: OwnershipExternal, Owner: "helm",
-				Reason: "release is externally owned"}
+		if strings.TrimSpace(labels[helmStorageOwnerLabel]) == helmStorageOwner {
+			return OwnershipClass{Kind: OwnershipExternal, Owner: helmStorageOwner,
+				Reason: releaseExternallyOwned}
 		}
 		return OwnershipClass{Kind: OwnershipInvalid, Reason: "ownership labels are missing"}
 	}
@@ -228,11 +232,11 @@ func ClassifyReleaseOwnership(rel HelmRelease) OwnershipClass {
 	}
 	if ours != "" && ours != ReleaseOwner {
 		return OwnershipClass{Kind: OwnershipExternal, Owner: ours, Mode: mode,
-			Reason: "release is externally owned"}
+			Reason: releaseExternallyOwned}
 	}
 	if ours == "" {
 		return OwnershipClass{Kind: OwnershipExternal, Owner: helmOwner,
-			Reason: "release is externally owned"}
+			Reason: releaseExternallyOwned}
 	}
 	if mode == ReleaseModeInstalled {
 		return OwnershipClass{Kind: OwnershipController, Owner: ours, Mode: mode,

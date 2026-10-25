@@ -60,6 +60,10 @@ linters:
       - linters:
           - goconst
         path: _test\.go
+      # Struct tags cannot use named constants.
+      - linters:
+          - goconst
+        source: '`json:"'
     paths:
       - third_party$
       - builtin$

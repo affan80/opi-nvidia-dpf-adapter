@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -652,7 +653,9 @@ func matchesPinnedRelease(rel HelmRelease, cfg InstallConfig) bool {
 		versionsEqual(rel.ChartVersion, cfg.ChartVersion)
 }
 
-func (h HelmInstaller) claimOrLeaveUnmanaged(ctx context.Context, in Intent, cfg InstallConfig, rel HelmRelease) (InstallResult, error) {
+func (h HelmInstaller) claimOrLeaveUnmanaged(
+	ctx context.Context, in Intent, cfg InstallConfig, rel HelmRelease,
+) (InstallResult, error) {
 	if !in.AdoptExisting || !matchesPinnedRelease(rel, cfg) {
 		return observedResult(InstallUnmanaged, OpSucceeded, rel, "", ""), nil
 	}
@@ -673,9 +676,7 @@ func (h HelmInstaller) claimOrLeaveUnmanaged(ctx context.Context, in Intent, cfg
 
 func stampAdoptedLabels(labels map[string]string) map[string]string {
 	out := map[string]string{}
-	for k, v := range labels {
-		out[k] = v
-	}
+	maps.Copy(out, labels)
 	out[ReleaseOwnerLabel] = ReleaseOwner
 	out[ReleaseModeLabel] = ReleaseModeAdopted
 	return out

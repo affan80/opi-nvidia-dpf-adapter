@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
@@ -81,12 +82,19 @@ func NewSecretHelmClient(c client.Client) *SecretHelmClient {
 	return &SecretHelmClient{Client: c}
 }
 
+func helmReleaseListOpts(namespace, name string) []client.ListOption {
+	return []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels{helmReleaseNameLabel: name},
+	}
+}
+
 func (s *SecretHelmClient) GetRelease(ctx context.Context, namespace, name string) (HelmRelease, error) {
 	if s == nil || s.Client == nil {
 		return HelmRelease{}, ErrReleaseNotFound
 	}
 	var list corev1.SecretList
-	err := s.Client.List(ctx, &list, client.InNamespace(namespace), client.MatchingLabels{"name": name})
+	err := s.Client.List(ctx, &list, helmReleaseListOpts(namespace, name)...)
 	if apierrors.IsForbidden(err) || apierrors.IsNotFound(err) {
 		return HelmRelease{}, ErrReleaseNotFound
 	}
@@ -171,7 +179,7 @@ func alreadyAdoptedLabels(labels map[string]string) bool {
 
 func (s *SecretHelmClient) latestStorageSecret(ctx context.Context, namespace, name string) (corev1.Secret, error) {
 	var list corev1.SecretList
-	if err := s.Client.List(ctx, &list, client.InNamespace(namespace), client.MatchingLabels{"name": name}); err != nil {
+	if err := s.Client.List(ctx, &list, helmReleaseListOpts(namespace, name)...); err != nil {
 		return corev1.Secret{}, err
 	}
 	sec, ok := latestHelmSecret(list.Items)
@@ -211,9 +219,9 @@ func latestHelmSecret(items []corev1.Secret) (corev1.Secret, bool) {
 		if item.Type != helmStorageSecretType && item.Type != "" {
 			continue
 		}
-		ver, _ := strconv.Atoi(item.Labels["version"])
-		status := item.Labels["status"]
-		if status != "" && status != HelmStatusDeployed && status != "superseded" {
+		ver, _ := strconv.Atoi(item.Labels[helmReleaseVersionLabel])
+		status := item.Labels[statusKey]
+		if status != "" && status != HelmStatusDeployed && status != helmStatusSuperseded {
 			continue
 		}
 		if !found || ver > bestVer || (ver == bestVer && status == HelmStatusDeployed) {
@@ -235,15 +243,11 @@ func releaseFromHelmSecret(sec corev1.Secret) (HelmRelease, error) {
 		return HelmRelease{}, err
 	}
 	labels := map[string]string{}
-	for k, v := range sec.Labels {
-		labels[k] = v
-	}
-	for k, v := range doc.Labels {
-		labels[k] = v
-	}
+	maps.Copy(labels, sec.Labels)
+	maps.Copy(labels, doc.Labels)
 	status := doc.Info.Status
 	if status == "" {
-		status = sec.Labels["status"]
+		status = sec.Labels[statusKey]
 	}
 	ns := doc.Namespace
 	if ns == "" {
@@ -251,7 +255,7 @@ func releaseFromHelmSecret(sec corev1.Secret) (HelmRelease, error) {
 	}
 	name := doc.Name
 	if name == "" {
-		name = sec.Labels["name"]
+		name = sec.Labels[helmReleaseNameLabel]
 	}
 	return HelmRelease{
 		Name:         name,
@@ -310,6 +314,6 @@ func gunzipBytes(raw []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	return io.ReadAll(zr)
 }

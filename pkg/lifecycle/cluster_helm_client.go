@@ -179,7 +179,9 @@ func (c *ClusterHelmClient) ownedRelease(ctx context.Context, cfg InstallConfig)
 	return rel, nil
 }
 
-func (c *ClusterHelmClient) writeRevision(ctx context.Context, cfg InstallConfig, rev int, lastGood string) (HelmRelease, error) {
+func (c *ClusterHelmClient) writeRevision(
+	ctx context.Context, cfg InstallConfig, rev int, lastGood string,
+) (HelmRelease, error) {
 	manifests, err := c.renderChart(cfg)
 	if err != nil {
 		return HelmRelease{}, err
@@ -291,12 +293,12 @@ func alreadyExistsAsConflict(obj client.Object, err error) error {
 
 func (c *ClusterHelmClient) storeSecret(ctx context.Context, cfg InstallConfig, rel HelmRelease, status string) error {
 	labels := map[string]string{
-		"name":            cfg.ReleaseName,
-		"owner":           "helm",
-		"status":          status,
-		"version":         strconv.Itoa(rel.Revision),
-		ReleaseOwnerLabel: cfg.ReleaseOwner,
-		ReleaseModeLabel:  ReleaseModeInstalled,
+		helmReleaseNameLabel:    cfg.ReleaseName,
+		helmStorageOwnerLabel:   helmStorageOwner,
+		statusKey:               status,
+		helmReleaseVersionLabel: strconv.Itoa(rel.Revision),
+		ReleaseOwnerLabel:       cfg.ReleaseOwner,
+		ReleaseModeLabel:        ReleaseModeInstalled,
 	}
 	payload, err := encodeHelmStorageRelease(helmStorageRelease{
 		Name:      cfg.ReleaseName,
@@ -348,14 +350,16 @@ func (c *ClusterHelmClient) markSuperseded(ctx context.Context, cfg InstallConfi
 		if fresh.Labels == nil {
 			fresh.Labels = map[string]string{}
 		}
-		fresh.Labels["status"] = helmStatusSuperseded
+		fresh.Labels[statusKey] = helmStatusSuperseded
 		return c.Client.Update(ctx, fresh)
 	})
 }
 
-func (c *ClusterHelmClient) findRevision(ctx context.Context, cfg InstallConfig, chartVersion string) (HelmRelease, int, error) {
+func (c *ClusterHelmClient) findRevision(
+	ctx context.Context, cfg InstallConfig, chartVersion string,
+) (HelmRelease, int, error) {
 	var list corev1.SecretList
-	if err := c.Client.List(ctx, &list, client.InNamespace(cfg.Namespace), client.MatchingLabels{"name": cfg.ReleaseName}); err != nil {
+	if err := c.Client.List(ctx, &list, helmReleaseListOpts(cfg.Namespace, cfg.ReleaseName)...); err != nil {
 		return HelmRelease{}, 0, err
 	}
 	for _, sec := range list.Items {
@@ -372,7 +376,8 @@ func (c *ClusterHelmClient) findRevision(ctx context.Context, cfg InstallConfig,
 
 func (c *ClusterHelmClient) deleteReleaseObjects(ctx context.Context, cfg InstallConfig) error {
 	var cms corev1.ConfigMapList
-	if err := c.Client.List(ctx, &cms, client.InNamespace(cfg.Namespace), client.MatchingLabels{helmInstanceLabel: cfg.ReleaseName}); err != nil {
+	if err := c.Client.List(ctx, &cms, client.InNamespace(cfg.Namespace),
+		client.MatchingLabels{helmInstanceLabel: cfg.ReleaseName}); err != nil {
 		return err
 	}
 	for i := range cms.Items {
@@ -385,7 +390,7 @@ func (c *ClusterHelmClient) deleteReleaseObjects(ctx context.Context, cfg Instal
 
 func (c *ClusterHelmClient) deleteReleaseSecrets(ctx context.Context, cfg InstallConfig) error {
 	var list corev1.SecretList
-	if err := c.Client.List(ctx, &list, client.InNamespace(cfg.Namespace), client.MatchingLabels{"name": cfg.ReleaseName}); err != nil {
+	if err := c.Client.List(ctx, &list, helmReleaseListOpts(cfg.Namespace, cfg.ReleaseName)...); err != nil {
 		return err
 	}
 	for i := range list.Items {

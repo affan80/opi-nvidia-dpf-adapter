@@ -44,13 +44,15 @@ func dpuScheme() *runtime.Scheme {
 	return s
 }
 
-func nvidiaDPU(name, phase string, powerCycle bool) *unstructured.Unstructured {
+const testDPUName = "dh2-bluefield-2"
+
+func nvidiaDPU(phase string, powerCycle bool) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{Object: map[string]any{
 		"status": map[string]any{"phase": phase},
 	}}
 	u.SetGroupVersionKind(nvidiaProbeGVK)
 	u.SetNamespace(DefaultNamespace)
-	u.SetName(name)
+	u.SetName(testDPUName)
 	if powerCycle {
 		u.SetAnnotations(map[string]string{hostPowerCycleRequiredKey: "true"})
 	}
@@ -59,7 +61,7 @@ func nvidiaDPU(name, phase string, powerCycle bool) *unstructured.Unstructured {
 
 func TestObserveNVIDIADPUsRebootingIsNotOperatorFailure(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(dpuScheme()).
-		WithObjects(nvidiaDPU("dh2-bluefield-2", DPUPhaseRebooting, true)).Build()
+		WithObjects(nvidiaDPU(DPUPhaseRebooting, true)).Build()
 	got := ObserveNVIDIADPUs(context.Background(), cl)
 	if got.Ready || got.Phase != DPUPhaseRebooting || len(got.Rebooting) != 1 {
 		t.Fatalf("rebooting DPU = %+v", got)
@@ -75,7 +77,7 @@ func TestObserveNVIDIADPUsRebootingIsNotOperatorFailure(t *testing.T) {
 
 func TestObserveNVIDIADPUsReadyWhenNotRebooting(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(dpuScheme()).
-		WithObjects(nvidiaDPU("dh2-bluefield-2", "Ready", false)).Build()
+		WithObjects(nvidiaDPU("Ready", false)).Build()
 	got := ObserveNVIDIADPUs(context.Background(), cl)
 	if !got.Ready || len(got.Rebooting) != 0 {
 		t.Fatalf("ready DPU = %+v", got)
@@ -99,7 +101,7 @@ func TestObserveNVIDIADPUsNilClient(t *testing.T) {
 
 func TestObserveNVIDIADPUsPowerCycleAnnotationStalls(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(dpuScheme()).
-		WithObjects(nvidiaDPU("dh2-bluefield-2", "Ready", true)).Build()
+		WithObjects(nvidiaDPU("Ready", true)).Build()
 	got := ObserveNVIDIADPUs(context.Background(), cl)
 	if got.Ready || !dpuNeedsRequeue(got) {
 		t.Fatalf("power-cycle annotation = %+v", got)
@@ -113,7 +115,7 @@ func TestDPURequeueAfterIsFiveSeconds(t *testing.T) {
 }
 
 func TestObserveNVIDIADPUsReportsPendingNvconfig(t *testing.T) {
-	dpu := nvidiaDPU("dh2-bluefield-2", DPUPhaseRebooting, true)
+	dpu := nvidiaDPU(DPUPhaseRebooting, true)
 	_ = unstructured.SetNestedSlice(dpu.Object, []any{
 		map[string]any{
 			"device": "/dev/mst/mt41686_pciconf0",
@@ -125,7 +127,9 @@ func TestObserveNVIDIADPUsReportsPendingNvconfig(t *testing.T) {
 	}, "status", "lastObservedPendingNvconfig", "devices")
 	cl := fake.NewClientBuilder().WithScheme(dpuScheme()).WithObjects(dpu).Build()
 	got := ObserveNVIDIADPUs(context.Background(), cl)
-	if got.Ready || !strings.Contains(got.Pending, "PF_SF_BAR_SIZE 8→0") || !strings.Contains(got.Pending, "PF_TOTAL_SF 32→0") {
+	if got.Ready ||
+		!strings.Contains(got.Pending, "PF_SF_BAR_SIZE 8→0") ||
+		!strings.Contains(got.Pending, "PF_TOTAL_SF 32→0") {
 		t.Fatalf("pending NVCONFIG = %+v", got)
 	}
 	if !strings.Contains(got.Message, "PF_SF_BAR_SIZE 8→0") {
@@ -134,7 +138,7 @@ func TestObserveNVIDIADPUsReportsPendingNvconfig(t *testing.T) {
 }
 
 func TestObserveNVIDIADPUsReadsSystemLevelReset(t *testing.T) {
-	dpu := nvidiaDPU("dh2-bluefield-2", DPUPhaseRebooting, true)
+	dpu := nvidiaDPU(DPUPhaseRebooting, true)
 	_ = unstructured.SetNestedField(dpu.Object, rebootMethodSystemReset, "status", "rebootStatus", "method")
 	_ = unstructured.SetNestedField(dpu.Object, "Pending", "status", "rebootStatus", "phase")
 	cl := fake.NewClientBuilder().WithScheme(dpuScheme()).WithObjects(dpu).Build()
@@ -148,7 +152,7 @@ func TestObserveNVIDIADPUsReadsSystemLevelReset(t *testing.T) {
 }
 
 func TestObserveNVIDIADPUsDoesNotMutate(t *testing.T) {
-	dpu := nvidiaDPU("dh2-bluefield-2", DPUPhaseRebooting, true)
+	dpu := nvidiaDPU(DPUPhaseRebooting, true)
 	inner := fake.NewClientBuilder().WithScheme(dpuScheme()).WithObjects(dpu).Build()
 	cl := &countingUpdateClient{Client: inner}
 	_ = ObserveNVIDIADPUs(context.Background(), cl)
@@ -174,7 +178,7 @@ func TestDPUObserveSourceHasNoReset(t *testing.T) {
 func TestReconcileWritesVendorDPUReadyOnReboot(t *testing.T) {
 	sch := dpuScheme()
 	cfg := configWithVersion(VendorNVIDIA, NVIDIAChartVersion)
-	dpu := nvidiaDPU("dh2-bluefield-2", DPUPhaseRebooting, true)
+	dpu := nvidiaDPU(DPUPhaseRebooting, true)
 	cl := fake.NewClientBuilder().WithScheme(sch).
 		WithObjects(cfg, dpu).WithStatusSubresource(cfg).Build()
 	r := &LifecycleManager{Client: cl, Scheme: sch, Probe: ReadyClusterProbe()}

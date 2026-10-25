@@ -37,6 +37,7 @@ const (
 	// release that already matches the pin. Empty means leave owner=helm
 	// unmanaged. Values: true | pin.
 	AdoptExistingAnnotation = "lifecycle.opi.nvidia.com/adopt-existing"
+	annotationTrue          = "true"
 )
 
 const invalidVendor = "invalid"
@@ -83,7 +84,7 @@ func adoptExistingRequested(cfg *unstructured.Unstructured) bool {
 		return false
 	}
 	v := strings.ToLower(strings.TrimSpace(cfg.GetAnnotations()[AdoptExistingAnnotation]))
-	return v == "true" || v == "pin"
+	return v == annotationTrue || v == "pin"
 }
 
 func sanitizedVendor(raw string) string {

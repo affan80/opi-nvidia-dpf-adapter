@@ -184,7 +184,7 @@ func (p RESTClusterProbe) NeedsKamaji(ctx context.Context) bool {
 		return false
 	}
 	for i := range list.Items {
-		t, _, _ := unstructured.NestedString(list.Items[i].Object, "spec", "type")
+		t, _, _ := unstructured.NestedString(list.Items[i].Object, string(IntentSpec), "type")
 		if t == DepKamaji {
 			return true
 		}
@@ -217,12 +217,12 @@ func (p RESTClusterProbe) Deployment(ctx context.Context, namespace, name string
 		return out
 	}
 	out.Present = true
-	replicas, found, _ := unstructured.NestedInt64(obj.Object, "spec", "replicas")
+	replicas, found, _ := unstructured.NestedInt64(obj.Object, string(IntentSpec), "replicas")
 	if !found {
 		replicas = 1
 	}
-	ready, _, _ := unstructured.NestedInt64(obj.Object, "status", "readyReplicas")
-	available, _, _ := unstructured.NestedInt64(obj.Object, "status", "availableReplicas")
+	ready, _, _ := unstructured.NestedInt64(obj.Object, statusKey, "readyReplicas")
+	available, _, _ := unstructured.NestedInt64(obj.Object, statusKey, "availableReplicas")
 	out.Healthy = ready >= replicas && (replicas == 0 || available > 0)
 	if !out.Healthy {
 		out.Message = fmt.Sprintf("ready %d/%d", ready, replicas)

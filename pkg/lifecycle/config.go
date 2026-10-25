@@ -41,13 +41,14 @@ const (
 	olmPackageKey      = "lifecycle.opi.nvidia.com/olm-package"
 	olmSubscriptionKey = "lifecycle.opi.nvidia.com/subscription"
 	olmSourceKey       = "lifecycle.opi.nvidia.com/catalog-source"
+	chartURLAnnotation = "lifecycle.opi.nvidia.com/chart-url"
 )
 
 // forbiddenOverrideKeys are DpuOperatorConfig annotations that would let a
 // user pick a chart URL, Helm args, or release namespace. They are rejected
 // without echoing the value.
 var forbiddenOverrideKeys = []string{
-	"lifecycle.opi.nvidia.com/chart-url",
+	chartURLAnnotation,
 	"lifecycle.opi.nvidia.com/chart-repo",
 	"lifecycle.opi.nvidia.com/chart-version",
 	helmArgsAnnotation,
@@ -163,7 +164,7 @@ func RejectInstallOverrides(cfg *unstructured.Unstructured) error {
 	for k, v := range ann {
 		lk := strings.ToLower(k)
 		if strings.Contains(lk, "helm-args") || strings.Contains(lk, "helm-set") ||
-			strings.Contains(lk, "chart-url") {
+			strings.Contains(lk, "chart-url") { //nolint:goconst // substring match, not the annotation key
 			return fmt.Errorf("install override %s is not allowed", k)
 		}
 		if looksLikeChartURL(v) && k != VersionAnnotation && k != VendorAnnotation {

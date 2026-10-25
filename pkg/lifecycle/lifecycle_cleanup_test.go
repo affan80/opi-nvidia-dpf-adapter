@@ -147,7 +147,8 @@ func TestMissingOrConflictingOwnershipFailsSafe(t *testing.T) {
 	claimed := labUnmanagedRelease()
 	claimed.Labels = stampAdoptedLabels(claimed.Labels)
 	mem = memWith(claimed)
-	got = cleanupMgr(mem, &MemoryResourceIndex{}).CleanupInstallations(context.Background(), newConfig("cfg", map[string]any{"vendor": "nvidia"}))
+	cfg := newConfig("cfg", map[string]any{"vendor": "nvidia"})
+	got = cleanupMgr(mem, &MemoryResourceIndex{}).CleanupInstallations(context.Background(), cfg)
 	if got.Action != CleanupPreserved || got.Ownership != OwnershipAdopted || mem.Uninstalls != 0 {
 		t.Fatalf("claimed pin default retain = %+v uninstalls=%d", got, mem.Uninstalls)
 	}

@@ -18,6 +18,7 @@ package mapping
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 )
@@ -30,9 +31,7 @@ func blueFieldSource(annotations map[string]any) map[string]any {
 			"dpu.nvidia.com/bfb-url":                    "https://example.invalid/bf.bfb",
 		},
 	}
-	for k, v := range annotations {
-		meta["annotations"].(map[string]any)[k] = v
-	}
+	maps.Copy(meta["annotations"].(map[string]any), annotations)
 	return object(meta, map[string]any{
 		"dpuProductName": "BlueField-2",
 		"nodeName":       "dh2",

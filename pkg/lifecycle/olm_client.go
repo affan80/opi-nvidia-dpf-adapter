@@ -19,6 +19,7 @@ package lifecycle
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"sync"
 
@@ -117,9 +118,7 @@ func (m *MemoryOLMClient) Put(sub OLMSubscription) {
 	}
 	if sub.Labels != nil {
 		labels := map[string]string{}
-		for k, v := range sub.Labels {
-			labels[k] = v
-		}
+		maps.Copy(labels, sub.Labels)
 		sub.Labels = labels
 	}
 	m.subs[releaseKey(sub.Namespace, sub.Name)] = sub
@@ -256,19 +255,19 @@ func (c *ClusterOLMClient) fillCSVVersion(ctx context.Context, sub *OLMSubscript
 	if err != nil {
 		return
 	}
-	ver, _, _ := unstructured.NestedString(obj.Object, "spec", "version")
+	ver, _, _ := unstructured.NestedString(obj.Object, string(IntentSpec), helmReleaseVersionLabel)
 	if ver != "" {
 		sub.Version = ver
 	}
 }
 
 func subscriptionFromUnstructured(obj *unstructured.Unstructured) OLMSubscription {
-	pkg, _, _ := unstructured.NestedString(obj.Object, "spec", "name")
-	channel, _, _ := unstructured.NestedString(obj.Object, "spec", "channel")
-	source, _, _ := unstructured.NestedString(obj.Object, "spec", "source")
-	csv, _, _ := unstructured.NestedString(obj.Object, "status", "installedCSV")
+	pkg, _, _ := unstructured.NestedString(obj.Object, string(IntentSpec), helmReleaseNameLabel)
+	channel, _, _ := unstructured.NestedString(obj.Object, string(IntentSpec), "channel")
+	source, _, _ := unstructured.NestedString(obj.Object, string(IntentSpec), "source")
+	csv, _, _ := unstructured.NestedString(obj.Object, statusKey, "installedCSV")
 	if csv == "" {
-		csv, _, _ = unstructured.NestedString(obj.Object, "status", "currentCSV")
+		csv, _, _ = unstructured.NestedString(obj.Object, statusKey, "currentCSV")
 	}
 	return OLMSubscription{
 		Name:      obj.GetName(),
@@ -345,8 +344,10 @@ func (o OLMInstaller) Ensure(ctx context.Context, in Intent) (InstallResult, err
 	}
 	cfg, pol := ApplyVersionPolicy(in, cfg)
 	if pol.Skew == SkewInvalidConfig {
-		return InstallResult{Action: InstallSkipped, OpStatus: OpFailed, Failure: "install config is not the pinned allow-list"},
-			ErrOLMPackageNotPublished
+		return InstallResult{
+			Action: InstallSkipped, OpStatus: OpFailed,
+			Failure: "install config is not the pinned allow-list",
+		}, ErrOLMPackageNotPublished
 	}
 
 	sub, err := o.Client.GetSubscription(ctx, cfg.Namespace, cfg.ReleaseName)

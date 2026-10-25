@@ -57,10 +57,10 @@ type DPUReport struct {
 // power-cycle the host, or run firmware reset.
 func ObserveNVIDIADPUs(ctx context.Context, c client.Client) DPUReport {
 	if c == nil {
-		return DPUReport{Phase: "Unknown", Message: "no client to list NVIDIA DPUs"}
+		return DPUReport{Phase: string(SkewUnknown), Message: "no client to list NVIDIA DPUs"}
 	}
 	if err := ctx.Err(); err != nil {
-		return DPUReport{Phase: "Unknown", Message: err.Error()}
+		return DPUReport{Phase: string(SkewUnknown), Message: err.Error()}
 	}
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(schema.GroupVersionKind{
@@ -69,10 +69,10 @@ func ObserveNVIDIADPUs(ctx context.Context, c client.Client) DPUReport {
 		Kind:    dpuKind + "List",
 	})
 	if err := c.List(ctx, list); err != nil {
-		return DPUReport{Phase: "Unknown", Message: SanitizeLogValue("dpu-list", err.Error())}
+		return DPUReport{Phase: string(SkewUnknown), Message: SanitizeLogValue("dpu-list", err.Error())}
 	}
 	if len(list.Items) == 0 {
-		return DPUReport{Phase: "Unknown", Message: "no NVIDIA DPU objects observed"}
+		return DPUReport{Phase: string(SkewUnknown), Message: "no NVIDIA DPU objects observed"}
 	}
 
 	out := DPUReport{}
@@ -80,12 +80,12 @@ func ObserveNVIDIADPUs(ctx context.Context, c client.Client) DPUReport {
 		dpu := list.Items[i]
 		name := dpu.GetNamespace() + "/" + dpu.GetName()
 		out.Names = append(out.Names, name)
-		phase, _, _ := unstructured.NestedString(dpu.Object, "status", "phase")
+		phase, _, _ := unstructured.NestedString(dpu.Object, statusKey, "phase")
 		if phase == "" {
-			phase, _, _ = unstructured.NestedString(dpu.Object, "status", "status")
+			phase, _, _ = unstructured.NestedString(dpu.Object, statusKey, statusKey)
 		}
-		method, _, _ := unstructured.NestedString(dpu.Object, "status", "rebootStatus", "method")
-		rebootPhase, _, _ := unstructured.NestedString(dpu.Object, "status", "rebootStatus", "phase")
+		method, _, _ := unstructured.NestedString(dpu.Object, statusKey, "rebootStatus", "method")
+		rebootPhase, _, _ := unstructured.NestedString(dpu.Object, statusKey, "rebootStatus", "phase")
 		if out.Phase == "" {
 			out.Phase = phase
 		}
@@ -96,7 +96,7 @@ func ObserveNVIDIADPUs(ctx context.Context, c client.Client) DPUReport {
 			out.Pending = pending
 		}
 		ann := dpu.GetAnnotations()
-		needsCycle := ann[hostPowerCycleRequiredKey] == "true"
+		needsCycle := ann[hostPowerCycleRequiredKey] == annotationTrue
 		if nvidiaDPUStalled(phase, method, rebootPhase, needsCycle) {
 			out.Rebooting = append(out.Rebooting, name)
 			out.Phase = DPUPhaseRebooting
@@ -121,14 +121,14 @@ func ObserveNVIDIADPUs(ctx context.Context, c client.Client) DPUReport {
 	}
 	out.Ready = true
 	if out.Phase == "" {
-		out.Phase = "Ready"
+		out.Phase = OperatorReady
 	}
 	out.Message = "NVIDIA DPU objects are not in Rebooting"
 	return out
 }
 
 func pendingNvconfigSummary(dpu unstructured.Unstructured) string {
-	devices, _, _ := unstructured.NestedSlice(dpu.Object, "status", "lastObservedPendingNvconfig", "devices")
+	devices, _, _ := unstructured.NestedSlice(dpu.Object, statusKey, "lastObservedPendingNvconfig", "devices")
 	var parts []string
 	seen := map[string]struct{}{}
 	for _, raw := range devices {
@@ -182,8 +182,8 @@ func dpuCondition(rep DPUReport) (status, reason, message string) {
 	case len(rep.Rebooting) > 0 || strings.EqualFold(rep.Phase, DPUPhaseRebooting):
 		return string(metav1.ConditionFalse), DPUPhaseRebooting, message
 	case rep.Ready:
-		return string(metav1.ConditionTrue), "Ready", message
+		return string(metav1.ConditionTrue), OperatorReady, message
 	default:
-		return string(metav1.ConditionUnknown), "Unknown", message
+		return string(metav1.ConditionUnknown), string(SkewUnknown), message
 	}
 }

@@ -110,7 +110,8 @@ func TestClusterHelmClientRefusesLiveDPFName(t *testing.T) {
 func TestClusterHelmClientNeedsChartRoot(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(lcmScheme()).Build()
 	helm := NewClusterHelmClient(cl)
-	if _, err := helm.Install(context.Background(), ProbeHelmConfig("0.1.0"), nil); !errors.Is(err, ErrHelmMutationNotConfigured) {
+	cfg := ProbeHelmConfig("0.1.0")
+	if _, err := helm.Install(context.Background(), cfg, nil); !errors.Is(err, ErrHelmMutationNotConfigured) {
 		t.Fatalf("empty ChartRoot = %v", err)
 	}
 }

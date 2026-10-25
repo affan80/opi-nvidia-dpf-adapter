@@ -106,7 +106,8 @@ func TestSecretHelmClientDoesNotMutate(t *testing.T) {
 	helm := NewSecretHelmClient(cl)
 	cfg := mustNVIDIAConfig(t)
 
-	if _, err := helm.Install(context.Background(), cfg, SafeHelmValues(cfg)); !errors.Is(err, ErrHelmMutationNotConfigured) {
+	_, err := helm.Install(context.Background(), cfg, SafeHelmValues(cfg))
+	if !errors.Is(err, ErrHelmMutationNotConfigured) {
 		t.Fatalf("Install = %v, want ErrHelmMutationNotConfigured", err)
 	}
 	if _, err := helm.Upgrade(context.Background(), cfg, SafeHelmValues(cfg)); !errors.Is(err, ErrReleaseUnmanaged) {
@@ -201,7 +202,8 @@ func TestMainWiresSecretHelmClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(b)
-	if !strings.Contains(src, "lifecycle.NewClusterHelmClient") && !strings.Contains(src, "lifecycle.NewSecretHelmClient") {
+	if !strings.Contains(src, "lifecycle.NewClusterHelmClient") &&
+		!strings.Contains(src, "lifecycle.NewSecretHelmClient") {
 		t.Fatal("cmd/main.go must wire a Secret/Cluster Helm client onto LifecycleManager.Helm")
 	}
 	if strings.Contains(src, "MemoryHelmClient") {

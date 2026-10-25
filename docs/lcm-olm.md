@@ -78,8 +78,8 @@ Lab (inventory only — do **not** install OLM or create a Subscription):
 ```bash
 scutil --nc start "F5 Access"
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<lab-host> '
 k3s kubectl get crd subscriptions.operators.coreos.com \
   clusterserviceversions.operators.coreos.com
 k3s kubectl get subscription,csv -A

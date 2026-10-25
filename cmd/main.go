@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"path/filepath"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -237,9 +238,16 @@ func main() {
 		os.Exit(1)
 	}
 	setupLog.Info("Registered Lifecycle Manager", "watches", lifecycle.DpuOperatorConfigGVK.Kind)
-	if err := lifecycle.SetupDpuOperatorConfigWebhook(mgr); err != nil {
-		setupLog.Error(err, "Failed to create webhook", "webhook", "DpuOperatorConfig")
-		os.Exit(1)
+	// Registering the webhook adds the server to the manager, and that server
+	// refuses to start without tls.crt. The default install leaves the webhook
+	// patch commented out, so skip registration until the certs are mounted.
+	if webhookCertificatesPresent(webhookCertPath, webhookCertName, webhookCertKey) {
+		if err := lifecycle.SetupDpuOperatorConfigWebhook(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "DpuOperatorConfig")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("DpuOperatorConfig webhook not registered; serving certificates are not mounted")
 	}
 	// +kubebuilder:scaffold:builder
 
@@ -257,6 +265,21 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+func webhookCertificatesPresent(certDir, certName, certKey string) bool {
+	if certDir == "" {
+		certDir = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
+	}
+	if certName == "" {
+		certName = "tls.crt"
+	}
+	if certKey == "" {
+		certKey = "tls.key"
+	}
+	_, crtErr := os.Stat(filepath.Join(certDir, certName))
+	_, keyErr := os.Stat(filepath.Join(certDir, certKey))
+	return crtErr == nil && keyErr == nil
 }
 
 func registerUnstructured(s *runtime.Scheme, gvk schema.GroupVersionKind) {

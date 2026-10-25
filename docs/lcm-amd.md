@@ -42,8 +42,8 @@ Lab (inventory only — do **not** apply AMD stub CRDs):
 
 ```bash
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<lab-host> '
 k3s kubectl get crd dscdevices.dpu.amd.com
 k3s kubectl get dpuoperatorconfig dpu-operator-config \
   -o jsonpath="{.spec.vendor}{\"\\n\"}{range .status.conditions[*]}{.type}={.status}/{.reason}{\"\\n\"}{end}"

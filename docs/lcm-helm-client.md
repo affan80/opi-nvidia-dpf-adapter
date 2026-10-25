@@ -77,8 +77,8 @@ Lab (inventory only — do **not** helm-install or helm-uninstall):
 ```bash
 scutil --nc start "F5 Access"
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<lab-host> '
 k3s --version
 k3s kubectl version --short
 k3s kubectl get crd certificates.cert-manager.io applications.argoproj.io \

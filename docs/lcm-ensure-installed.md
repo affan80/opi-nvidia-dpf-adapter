@@ -61,7 +61,7 @@ installer to prove Reconcile called `Ensure`. Nil installer →
 | Optional version pin | `lifecycle.opi.nvidia.com/vendor-operator-version=v26.4.0` |
 | Pins | `config/versions.yaml`, `pkg/lifecycle/version.go` window `[v26.4.0, v27.0.0)` |
 | Go 1.26 + `make lint` | CI Ubuntu jobs |
-| VPN + lab SSH | F5 Access on this Mac; `opi_lab_key`; do not copy the key |
+| VPN + lab SSH | F5 Access on this Mac; `<ssh-key>`; do not copy the key |
 | Job scratch on the server | `/tmp/lab-job-<name>/` only; delete after |
 
 Not needed, and not allowed in this phase:
@@ -93,38 +93,38 @@ Done-when: `TestReconcileCallsEnsureInstalled` records one
 scutil --nc status "F5 Access" | head -n 8
 # if Disconnected:
 scutil --nc start "F5 Access"
-ping -c 2 -W 2000 172.22.1.2
+ping -c 2 -W 2000 <lab-host>
 
 SSH_OPTS=(
   -o BatchMode=yes
   -o ConnectTimeout=25
   -o IdentityAgent=none
   -o IdentitiesOnly=yes
-  -o IdentityFile="$HOME/.ssh/opi_lab_key"
+  -o IdentityFile="$HOME/.ssh/<ssh-key>"
   -o UseKeychain=yes
   -o KexAlgorithms=curve25519-sha256
 )
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'hostname; k3s --version'
+ssh "${SSH_OPTS[@]}" root@<lab-host> 'hostname; k3s --version'
 ```
 
 ### Live probes (dh2)
 
 ```bash
 # Intent + LCM condition (must be VendorOperatorSupported, never Ready)
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<lab-host> \
   'k3s kubectl get dpuoperatorconfig dpu-operator-config -o yaml'
 
 # NVIDIA API present, AMD API absent
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<lab-host> \
   'k3s kubectl get crd dpus.provisioning.dpu.nvidia.com dscdevices.dpu.amd.com'
 
 # DPF version the policy window is compared to
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<lab-host> \
   'k3s kubectl -n dpf-operator-system get deploy dpf-operator-controller-manager \
      -o jsonpath="{.spec.template.spec.containers[0].image}{"\n"}"'
 
 # After deploy: EnsureInstalled log, not "would install"
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
+ssh "${SSH_OPTS[@]}" root@<lab-host> \
   'k3s kubectl -n opi-nvidia-dpf-adapter-system logs \
      deploy/opi-nvidia-dpf-adapter-controller-manager --tail=80 \
    | grep ensure'
@@ -137,11 +137,11 @@ ssh "${SSH_OPTS[@]}" root@172.22.1.2 \
 docker build --platform linux/amd64 -t controller:latest .
 docker save controller:latest | gzip > /tmp/controller-ensure.tar.gz
 
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'mkdir -p /tmp/lab-job-ensure'
+ssh "${SSH_OPTS[@]}" root@<lab-host> 'mkdir -p /tmp/lab-job-ensure'
 scp "${SSH_OPTS[@]}" /tmp/controller-ensure.tar.gz \
-  root@172.22.1.2:/tmp/lab-job-ensure/controller.tar.gz
+  root@<lab-host>:/tmp/lab-job-ensure/controller.tar.gz
 
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'set -e
+ssh "${SSH_OPTS[@]}" root@<lab-host> 'set -e
 gzip -dc /tmp/lab-job-ensure/controller.tar.gz | k3s ctr images import -
 k3s kubectl -n opi-nvidia-dpf-adapter-system rollout restart \
   deploy/opi-nvidia-dpf-adapter-controller-manager

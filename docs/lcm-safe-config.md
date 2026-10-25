@@ -40,7 +40,7 @@ GOTOOLCHAIN=go1.26.0 make lint
 Lab (temp object, then delete):
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 'k3s kubectl apply -f - <<EOF
+ssh "${SSH_OPTS[@]}" root@<lab-host> 'k3s kubectl apply -f - <<EOF
 apiVersion: config.openshift.io/v1
 kind: DpuOperatorConfig
 metadata:

@@ -109,4 +109,7 @@ func TestMainRegistersDpuOperatorConfigWebhook(t *testing.T) {
 	if !strings.Contains(string(b), "SetupDpuOperatorConfigWebhook") {
 		t.Fatal("cmd/main.go must register the DpuOperatorConfig validating webhook")
 	}
+	if !strings.Contains(string(b), "webhookCertificatesPresent") {
+		t.Fatal("cmd/main.go must skip the webhook until serving certificates are mounted")
+	}
 }

@@ -45,8 +45,8 @@ DisableFor is enough and keeps BMC/user Secrets out of the informer.
 
 ```
 # hop
-ssh kartikey0104@Kartikeys-MacBook-Pro.local \
-  'ssh root@172.22.1.2 "k3s kubectl -n opi-nvidia-dpf-adapter-system get pods -o wide"'
+ssh <user>@<vpn-mac> \
+  'ssh root@<lab-host> "k3s kubectl -n opi-nvidia-dpf-adapter-system get pods -o wide"'
 
 # first roll (already applied)
 # image controller:lcm-20261024
@@ -62,8 +62,8 @@ Second roll commands:
 IMG=controller:lcm-20261024b
 docker build --platform linux/amd64 -t "$IMG" .
 docker save "$IMG" | gzip > /tmp/controller-lcm-20261024b.tar.gz
-scp /tmp/controller-lcm-20261024b.tar.gz root@172.22.1.2:/tmp/lab-job-image-roll/
-ssh root@172.22.1.2 'k3s ctr images import /tmp/lab-job-image-roll/controller-lcm-20261024b.tar.gz'
+scp /tmp/controller-lcm-20261024b.tar.gz root@<lab-host>:/tmp/lab-job-image-roll/
+ssh root@<lab-host> 'k3s ctr images import /tmp/lab-job-image-roll/controller-lcm-20261024b.tar.gz'
 k3s kubectl -n opi-nvidia-dpf-adapter-system set image \
   deploy/opi-nvidia-dpf-adapter-controller-manager manager=controller:lcm-20261024b
 ```

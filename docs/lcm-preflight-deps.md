@@ -75,7 +75,7 @@ GOTOOLCHAIN=go1.26.0 make lint
 Lab inventory (read-only):
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 '
+ssh "${SSH_OPTS[@]}" root@<lab-host> '
 k3s kubectl version -o json
 for c in certificates.cert-manager.io issuers.cert-manager.io \
          tenantcontrolplanes.kamaji.clastix.io applications.argoproj.io \
@@ -90,7 +90,7 @@ k3s kubectl get dpucluster -A
 After deploying the rebuilt image, the live NVIDIA object must flip:
 
 ```bash
-ssh "${SSH_OPTS[@]}" root@172.22.1.2 '
+ssh "${SSH_OPTS[@]}" root@<lab-host> '
 k3s kubectl get dpuoperatorconfig dpu-operator-config \
   -o jsonpath="{range .status.conditions[*]}{.type}={.status}/{.reason} {.message}{\"\\n\"}{end}"
 k3s kubectl -n opi-nvidia-dpf-adapter-system logs \

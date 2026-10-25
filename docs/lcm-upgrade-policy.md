@@ -64,8 +64,8 @@ Lab (read-only — do **not** helm-upgrade):
 ```bash
 scutil --nc start "F5 Access"
 ssh -o IdentityAgent=none -o IdentitiesOnly=yes \
-  -o IdentityFile="$HOME/.ssh/opi_lab_key" -o UseKeychain=yes \
-  -o KexAlgorithms=curve25519-sha256 root@172.22.1.2 '
+  -o IdentityFile="$HOME/.ssh/<ssh-key>" -o UseKeychain=yes \
+  -o KexAlgorithms=curve25519-sha256 root@<lab-host> '
 k3s --version
 k3s kubectl get secret -n dpf-operator-system -l owner=helm \
   -o jsonpath="{range .items[*]}{.metadata.name} owner={.metadata.labels.owner}{\"\\n\"}{end}"

@@ -12,8 +12,8 @@ toolchain go1.26.10
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.30.0
-	github.com/onsi/ginkgo/v2 v2.27.4
-	github.com/onsi/gomega v1.39.0
+	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/gomega v1.40.0
 	github.com/openshift/dpu-operator/dpu-api v0.0.0-20260428194247-3092bcbe6a03
 	github.com/opiproject/opi-api/v1/gen/go/lifecycle v0.0.0-20251222163009-3317b3692163
 	google.golang.org/grpc v1.83.2
@@ -47,7 +47,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
+	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

@@ -87,16 +87,35 @@ func TestManagerDeploymentReplicasAndElection(t *testing.T) {
 		t.Fatalf("Deployment replicas = %d, want >= 2 for active-standby singleton with failover", doc.Spec.Replicas)
 	}
 
-	foundLeaderElect := false
+	enabled := false
 	for _, c := range doc.Spec.Template.Spec.Containers {
 		for _, arg := range c.Args {
-			if arg == "--leader-elect" || strings.HasPrefix(arg, "--leader-elect=") {
-				foundLeaderElect = true
-				break
+			switch {
+			case arg == "--leader-elect=false" || arg == "--leader-elect=0":
+				t.Fatalf("Deployment arg %q disables election while replicas=%d; two writers would share DpuOperatorConfig",
+					arg, doc.Spec.Replicas)
+			case arg == "--leader-elect" || arg == "--leader-elect=true":
+				enabled = true
 			}
 		}
 	}
-	if !foundLeaderElect {
-		t.Fatal("Deployment container args must include --leader-elect for singleton controller behavior")
+	if !enabled {
+		t.Fatal("Deployment container args must include --leader-elect so only one replica is the active controller")
+	}
+}
+
+func TestMainWiresLeaderElectionLease(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "cmd", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	if !strings.Contains(src, `LeaderElection:         enableLeaderElection`) &&
+		!strings.Contains(src, `LeaderElection: enableLeaderElection`) {
+		t.Fatal("cmd/main.go must pass --leader-elect into ctrl.Options.LeaderElection")
+	}
+	if !strings.Contains(src, `LeaderElectionID:       "9ab915d2.opi.nvidia.com"`) &&
+		!strings.Contains(src, `LeaderElectionID: "9ab915d2.opi.nvidia.com"`) {
+		t.Fatal("cmd/main.go must pin LeaderElectionID so both replicas contest the same lease")
 	}
 }

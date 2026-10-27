@@ -14,10 +14,20 @@ rules:
   - config.openshift.io
   resources:
   - dataprocessingunits
+  - dpuoperatorconfigs
   verbs:
   - get
   - list
   - watch
+  - patch
+  - update
+- apiGroups:
+  - config.openshift.io
+  resources:
+  - dataprocessingunits/status
+  - dpuoperatorconfigs/status
+  verbs:
+  - get
   - patch
   - update
 # Observe the DPF create intent. CreateNetworkFunction must not succeed

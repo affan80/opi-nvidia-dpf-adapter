@@ -19,6 +19,7 @@ package mapping
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -155,4 +156,24 @@ func evalBool(expr string, vars map[string]any) (bool, error) {
 		return false, fmt.Errorf("cel %q: expected bool, got %T", expr, v)
 	}
 	return b, nil
+}
+
+// evalString treats a ternary / children CEL expression as code and any
+// other value as a literal (AllChildrenReady, static messages).
+func evalString(expr string, vars map[string]any) (string, error) {
+	if expr == "" {
+		return "", nil
+	}
+	if !strings.Contains(expr, "?") {
+		return expr, nil
+	}
+	v, err := evalCEL(expr, vars)
+	if err != nil {
+		return "", err
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("cel %q: expected string, got %T", expr, v)
+	}
+	return s, nil
 }

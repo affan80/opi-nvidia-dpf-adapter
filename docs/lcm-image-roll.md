@@ -78,6 +78,49 @@ Lab after second roll (2026-10-24T13:10:44Z):
 | Secret watch errors | **0** (was 8 on `lcm-20261024`) |
 | `dscdevices.dpu.amd.com` | NotFound (required on BlueField) |
 
+## Lab (2026-10-27)
+
+`controller:lcm-20261024b` CrashLoopBackOff on dh2: it `Owns()` AMD
+emit kinds. This host has no AMD card and no `dpu.amd.com` CRDs
+(`docs/hybrid-integration-design.md`). Cache sync timed out and the
+process exited. Do not apply AMD stubs.
+
+`ownableTargets` skips kinds discovery does not serve. Rolled
+`controller:lcm-20261027a`, replicas **2**, `--leader-elect` kept.
+
+| Check | Result |
+|---|---|
+| Image | `controller:lcm-20261027a` |
+| Replicas | 2/2 Ready, 0 restarts |
+| Lease | `9ab915d2.opi.nvidia.com` held by one new pod |
+| AMD Owns | log `DPF kind is not installed; not watching it yet` for DSC* |
+| `dscdevices.dpu.amd.com` | NotFound |
+
+## Daemon Ready roll (2026-10-27)
+
+The vsp-opi-daemon now writes the `Ready` condition after a successful
+Init/GetDevices handshake (`cmd/opi-daemon/main.go` +
+`pkg/vsp.ReportReady`, DPU matched by serial annotation,
+DpuOperatorConfig always). Docker Desktop's content store was corrupt
+(`meta.db: input/output error`, same blocker as kind e2e), so the image
+was hand-assembled: CGO_ENABLED=0 linux/amd64 `opi-daemon` binary in a
+scratch layer, docker-archive tar, `k3s ctr images import`.
+
+| Check | Result |
+|---|---|
+| Image | `controller:daemon-ready-20261027a` (scratch, `/opi-daemon` only) |
+| ClusterRole | `opi-nvidia-dpf-adapter-nvidia-vsp-role` patched with `dpuoperatorconfigs` + both `/status` subresources |
+| VSP DS | stays on `controller:latest` (`/vsp`, container name `vsp`, serves the vendor-plugin socket) |
+| New DS | `opi-nvidia-dpf-adapter-opi-daemon`, SA `opi-nvidia-dpf-adapter-nvidia-vsp`, 1/1 Running |
+| Handshake | `Init/GetDevices ok`, device `MT2321XZ0KVX` at `0000:0f:00.0`, health Healthy |
+| DPU condition | `Ready=True reason=DeviceHealthy` on `dh2-bluefield-2` |
+| DpuOperatorConfig condition | `Ready=True reason=DeviceHealthy` on `dpu-operator-config` |
+
+Rolling the shared `controller:*` tag onto the VSP DS fails: the live
+manifest runs `/vsp` (container `vsp`), which the scratch image does
+not contain. The two DaemonSets are separate workloads sharing one
+hostPath socket directory.
+
 ## Tests
 
 ```

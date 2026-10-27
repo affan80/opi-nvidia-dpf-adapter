@@ -21,6 +21,9 @@ spec:
     matchLabels:
       control-plane: controller-manager
       app.kubernetes.io/name: opi-nvidia-dpf-adapter
+  # Two replicas plus --leader-elect: one manager writes, the other
+  # waits on the lease. A single replica has no standby on a node
+  # loss. Do not drop --leader-elect while replicas is greater than 1.
   replicas: 2
   template:
     metadata:

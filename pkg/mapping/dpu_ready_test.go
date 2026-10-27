@@ -146,6 +146,39 @@ func TestDefaultFlavorPinsOfficialDPF264Nvconfig(t *testing.T) {
 	}
 }
 
+func TestDPFReadyReasonRebootingWhenDPUPhaseRebooting(t *testing.T) {
+	// dh2 DPU stays phase=Rebooting until the host reset DPF asked for.
+	// AllChildrenReady as the False reason looks like a mapping bug.
+	spec, err := LoadFile(mappingDir + "/dataprocessingunit.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := object(map[string]any{"name": "dh2-bluefield-2"}, map[string]any{
+		"dpuProductName": "BlueField-2",
+		"nodeName":       "dh2",
+	})
+	dpu := map[string]any{
+		"kind":   "DPU",
+		"status": map[string]any{"phase": "Rebooting"},
+	}
+	bfb := map[string]any{"kind": "BFB", "status": map[string]any{"phase": "Ready"}}
+	st, err := ApplyStatus(spec, src, []any{dpu, bfb, map[string]any{"kind": "DPUFlavor"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := conditionByType(t, st, "DPFReady")
+	if got["status"] != "False" {
+		t.Fatalf("DPFReady=%v, want False while DPU phase is Rebooting", got["status"])
+	}
+	if got["reason"] != "Rebooting" {
+		t.Fatalf("DPFReady reason=%q, want Rebooting (not AllChildrenReady)", got["reason"])
+	}
+	msg, _ := got["message"].(string)
+	if !strings.Contains(msg, "Rebooting") {
+		t.Fatalf("DPFReady message=%q, want it to name Rebooting", msg)
+	}
+}
+
 func TestDPFReadyFalseWhileDPUInitializing(t *testing.T) {
 	spec, err := LoadFile(mappingDir + "/dataprocessingunit.yaml")
 	if err != nil {

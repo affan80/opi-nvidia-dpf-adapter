@@ -77,7 +77,7 @@ func main() {
 		"Directory of FieldMapping YAML documents that drive OPI→DPF translation.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", true,
 		"Enable leader election for controller manager. "+
-			"Default true so a second replica does not write the same DpuOperatorConfig.")
+			"Default true so a second replica is standby and does not write the same DpuOperatorConfig.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")

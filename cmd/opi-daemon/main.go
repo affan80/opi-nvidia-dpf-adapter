@@ -23,13 +23,21 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/discovery"
+	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/lifecycle"
 	"github.com/kartikeyg0104/opi-nvidia-dpf-adapter/pkg/vsp"
 )
 
@@ -68,6 +76,10 @@ func main() {
 		setupLog.Error(err, "OPI daemon could not reach VSP")
 		os.Exit(1)
 	}
+	if reportErr := reportReadyIfCluster(ctx, got); reportErr != nil {
+		setupLog.Error(reportErr, "OPI daemon could not write Ready")
+		os.Exit(1)
+	}
 	setupLog.Info("Init/GetDevices ok",
 		"ip", got.IP,
 		"port", got.Port,
@@ -81,4 +93,29 @@ func main() {
 		return
 	}
 	<-ctx.Done()
+}
+
+func reportReadyIfCluster(ctx context.Context, hs *vsp.HandshakeResult) error {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		return nil
+	}
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		setupLog.Info("no kubeconfig; Ready stays for a later daemon with a cluster client")
+		return nil
+	}
+	scheme := runtime.NewScheme()
+	registerUnstructured(scheme, discovery.DataProcessingUnitGVK)
+	registerUnstructured(scheme, lifecycle.DpuOperatorConfigGVK)
+	cl, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return err
+	}
+	return vsp.ReportReady(ctx, cl, hs)
+}
+
+func registerUnstructured(scheme *runtime.Scheme, gvk schema.GroupVersionKind) {
+	scheme.AddKnownTypeWithName(gvk, &unstructured.Unstructured{})
+	scheme.AddKnownTypeWithName(gvk.GroupVersion().WithKind(gvk.Kind+"List"), &unstructured.UnstructuredList{})
+	metav1.AddToGroupVersion(scheme, gvk.GroupVersion())
 }

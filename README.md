@@ -263,6 +263,11 @@ make docker-build docker-push IMG=<registry>/opi-nvidia-dpf-adapter:<tag>
 make deploy IMG=<registry>/opi-nvidia-dpf-adapter:<tag>
 ```
 
+The manager Deployment runs two replicas with `--leader-elect` (default
+true, lease `9ab915d2.opi.nvidia.com`). Only the elected replica
+reconciles. The other is standby and takes the lease when the leader
+stops (`LeaderElectionReleaseOnCancel`).
+
 This adapter does not install OPI or DPF CRDs (`make install` is a
 no-op for APIs this repo does not own).
 

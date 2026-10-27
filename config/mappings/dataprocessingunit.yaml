@@ -150,5 +150,5 @@ status:
   conditions:
     - type: DPFReady
       status: "children.size() > 0 && children.all(c, c.?status.?conditions.orValue([]).exists(cond, cond.type == 'Ready' && cond.status == 'True') || c.?status.?phase.orValue('') == 'Ready' || (c.?status.?conditions.orValue([]).size() == 0 && c.?status.?phase.orValue('') == ''))"
-      reason: AllChildrenReady
-      message: "All emitted DPF objects report Ready (condition or phase)"
+      reason: "children.exists(c, c.?status.?phase.orValue('') == 'Rebooting') ? 'Rebooting' : 'AllChildrenReady'"
+      message: "children.exists(c, c.?status.?phase.orValue('') == 'Rebooting') ? 'NVIDIA DPU child is Rebooting; host reset is DPF ask, this adapter does not run mlxfwreset' : 'All emitted DPF objects report Ready (condition or phase)'"

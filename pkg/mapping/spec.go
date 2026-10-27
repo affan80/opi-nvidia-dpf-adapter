@@ -181,7 +181,9 @@ const (
 )
 
 // StatusCondition is one mirrored condition. Status is a CEL expression that
-// must evaluate to bool; Type/Reason/Message are literals.
+// must evaluate to bool. Reason and Message are literals unless they contain
+// `?` (CEL ternary), so a Rebooting child can name itself without a second
+// writer.
 type StatusCondition struct {
 	Type    string `json:"type" yaml:"type"`
 	Status  string `json:"status" yaml:"status"`

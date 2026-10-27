@@ -243,10 +243,18 @@ func ApplyStatus(spec *Spec, source map[string]any, children []any) (map[string]
 		}
 		cond := map[string]any{typeKey: c.Type, statusKey: status}
 		if c.Reason != "" {
-			cond["reason"] = c.Reason
+			reason, err := evalString(c.Reason, celVars(source, nil, children))
+			if err != nil {
+				return nil, fmt.Errorf("status condition %s reason: %w", c.Type, err)
+			}
+			cond["reason"] = reason
 		}
 		if c.Message != "" {
-			cond["message"] = c.Message
+			message, err := evalString(c.Message, celVars(source, nil, children))
+			if err != nil {
+				return nil, fmt.Errorf("status condition %s message: %w", c.Type, err)
+			}
+			cond["message"] = message
 		}
 		conds = append(conds, cond)
 	}

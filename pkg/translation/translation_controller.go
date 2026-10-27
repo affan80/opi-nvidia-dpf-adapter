@@ -149,10 +149,76 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		log.Info("applied translated object", "kind", obj.GetKind(), "name", obj.GetName(), "namespace", obj.GetNamespace())
 	}
 
+	// Children the desired set no longer names must not outlive the change:
+	// a shrunk or renamed chain would otherwise leave its old members behind
+	// until the whole source is deleted. Prune before mirroring so the
+	// conditions reflect exactly the children that remain.
+	if err := r.pruneStaleChildren(ctx, src, emitted); err != nil {
+		return ctrl.Result{}, fmt.Errorf("prune stale children: %w", err)
+	}
+
 	if err := r.mirrorStatus(ctx, src); err != nil {
 		return ctrl.Result{}, fmt.Errorf("mirror status: %w", err)
 	}
 	return ctrl.Result{}, nil
+}
+
+// pruneStaleChildren deletes children this source previously emitted that the
+// current desired set no longer contains: chain members that were removed,
+// renamed, or guarded out of the mapping. Kubernetes GC only reclaims children
+// when the source itself dies, so a spec update alone would otherwise leak the
+// old members forever. Owner-referenced and annotation-tracked children carry
+// the same translation labels, so one labeled listing covers both tracks.
+func (r *Reconciler) pruneStaleChildren(
+	ctx context.Context, src *unstructured.Unstructured, emitted []*unstructured.Unstructured,
+) error {
+	desired := make(map[string]bool, len(emitted))
+	for _, obj := range emitted {
+		desired[childKey(obj.GetKind(), obj.GetNamespace(), obj.GetName())] = true
+	}
+	objs, err := r.listChildObjects(ctx, src)
+	if err != nil {
+		return err
+	}
+	wantAnn := annSourceValue(src)
+	log := logf.FromContext(ctx)
+	for i := range objs {
+		child := &objs[i]
+		// The label selector spans every namespace this source kind emits
+		// into, so a same-named source elsewhere can surface in the listing.
+		// Only children this exact source owns are prunable.
+		if !ownedBySource(child, src, wantAnn) {
+			continue
+		}
+		if desired[childKey(child.GetKind(), child.GetNamespace(), child.GetName())] {
+			continue
+		}
+		if err := r.Delete(ctx, child); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("delete stale child %s/%s: %w", child.GetKind(), child.GetName(), err)
+		}
+		log.Info("deleted stale child no longer in the desired set",
+			"kind", child.GetKind(), "name", child.GetName(), "namespace", child.GetNamespace())
+	}
+	return nil
+}
+
+// ownedBySource reports whether child was emitted by src: either it carries a
+// controller owner reference to src (the same-namespace track) or the
+// provenance annotation stamped when the owner reference was illegal (the
+// cross-namespace track). UID equality is what makes a deleted-then-recreated
+// source with a matching name start fresh instead of adopting the old tree.
+func ownedBySource(child, src *unstructured.Unstructured, wantAnn string) bool {
+	for _, ref := range child.GetOwnerReferences() {
+		if ref.Kind == src.GetKind() && ref.Name == src.GetName() &&
+			ref.UID != "" && ref.UID == src.GetUID() {
+			return true
+		}
+	}
+	return child.GetAnnotations()[annSource] == wantAnn
+}
+
+func childKey(kind, namespace, name string) string {
+	return kind + "|" + namespace + "|" + name
 }
 
 // reconcileDelete deletes annotation-tracked children (owner-ref children are

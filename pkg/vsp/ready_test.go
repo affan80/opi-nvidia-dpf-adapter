@@ -62,7 +62,7 @@ func TestReportReadyWritesDaemonConditionAfterHandshake(t *testing.T) {
 
 	got := getReadyObject(t, cl, discovery.DataProcessingUnitGVK, "dh2-bluefield-2")
 	ready := conditionOfType(t, got, mapping.ReservedConditionType)
-	if ready["status"] != "True" || ready["reason"] != "DeviceHealthy" {
+	if ready["status"] != condStatusTrue || ready["reason"] != "DeviceHealthy" {
 		t.Fatalf("DataProcessingUnit Ready = %#v, want True/DeviceHealthy", ready)
 	}
 	if conditionOfType(t, got, "DPFReady")["reason"] != "Rebooting" {
@@ -71,7 +71,7 @@ func TestReportReadyWritesDaemonConditionAfterHandshake(t *testing.T) {
 
 	lcm := getReadyObject(t, cl, lifecycle.DpuOperatorConfigGVK, "dpu-operator-config")
 	lcmReady := conditionOfType(t, lcm, mapping.ReservedConditionType)
-	if lcmReady["status"] != "True" || lcmReady["reason"] != "DeviceHealthy" {
+	if lcmReady["status"] != condStatusTrue || lcmReady["reason"] != "DeviceHealthy" {
 		t.Fatalf("DpuOperatorConfig Ready = %#v, want True/DeviceHealthy", lcmReady)
 	}
 }
@@ -143,7 +143,9 @@ func newReadyConfig(name string) *unstructured.Unstructured {
 	return cfg
 }
 
-func getReadyObject(t *testing.T, cl client.Client, gvk schema.GroupVersionKind, name string) *unstructured.Unstructured {
+func getReadyObject(
+	t *testing.T, cl client.Client, gvk schema.GroupVersionKind, name string,
+) *unstructured.Unstructured {
 	t.Helper()
 	got := &unstructured.Unstructured{}
 	got.SetGroupVersionKind(gvk)

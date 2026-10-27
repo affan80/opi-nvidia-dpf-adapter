@@ -107,7 +107,9 @@ var _ = Describe("Leader Election and Singleton Controller Failover", func() {
 		}).WithTimeout(10 * time.Second).WithPolling(100 * time.Millisecond).Should(BeTrue())
 
 		By("verifying the standby manager is NOT elected while the first manager is leader")
-		Consistently(standbyLeader.Elected()).WithTimeout(1 * time.Second).WithPolling(100 * time.Millisecond).ShouldNot(BeClosed())
+		Consistently(standbyLeader.Elected()).
+			WithTimeout(1 * time.Second).WithPolling(100 * time.Millisecond).
+			ShouldNot(BeClosed())
 
 		By("verifying the Lease object exists and holder is active")
 		lease := &coordinationv1.Lease{}
@@ -120,7 +122,9 @@ var _ = Describe("Leader Election and Singleton Controller Failover", func() {
 		cancelFirstLeader()
 
 		By("verifying the standby manager acquires the lease and becomes the active leader (failover)")
-		Eventually(standbyLeader.Elected()).WithTimeout(10 * time.Second).WithPolling(100 * time.Millisecond).Should(BeClosed())
+		Eventually(standbyLeader.Elected()).
+			WithTimeout(10 * time.Second).WithPolling(100 * time.Millisecond).
+			Should(BeClosed())
 
 		By("verifying the Lease object holder has switched to the new leader")
 		Eventually(func(g Gomega) {

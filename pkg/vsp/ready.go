@@ -18,6 +18,7 @@ package vsp
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -36,6 +37,9 @@ const (
 	readyReasonUnhealthy = "DeviceUnhealthy"
 	readyMsgHealthy      = "VSP handshake enumerated a healthy device"
 	readyMsgUnhealthy    = "VSP handshake reported no healthy device"
+
+	condStatusTrue  = "True"
+	condStatusFalse = "False"
 )
 
 // ReportReady is the vsp-opi-daemon writer of Ready. The translator and
@@ -97,7 +101,10 @@ func reportReadyOnGVKs(
 	return nil
 }
 
-func patchReady(ctx context.Context, c client.Client, gvk schema.GroupVersionKind, obj *unstructured.Unstructured, healthy bool) error {
+func patchReady(
+	ctx context.Context, c client.Client, gvk schema.GroupVersionKind,
+	obj *unstructured.Unstructured, healthy bool,
+) error {
 	key := client.ObjectKeyFromObject(obj)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		fresh := &unstructured.Unstructured{}
@@ -113,11 +120,11 @@ func patchReady(ctx context.Context, c client.Client, gvk schema.GroupVersionKin
 }
 
 func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
-	wantStatus := "True"
+	wantStatus := condStatusTrue
 	reason := readyReasonHealthy
 	message := readyMsgHealthy
 	if !healthy {
-		wantStatus = "False"
+		wantStatus = condStatusFalse
 		reason = readyReasonUnhealthy
 		message = readyMsgUnhealthy
 	}
@@ -138,9 +145,7 @@ func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
 		}
 		found = true
 		next := map[string]any{}
-		for k, v := range m {
-			next[k] = v
-		}
+		maps.Copy(next, m)
 		if next["status"] != wantStatus || next["reason"] != reason || next["message"] != message {
 			next["status"] = wantStatus
 			next["reason"] = reason

@@ -175,7 +175,10 @@ func TestBlueFieldAndAMDFixturesDoNotCorruptConditions(t *testing.T) {
 		// Even when passed children, the ownership gate status.when must evaluate false
 		// and return nil.
 		st, err := ApplyStatus(amdSpec, bfFixture, []any{
-			map[string]any{"kind": "DSCDevice", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{
+				"kind":   "DSCDevice",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
+			},
 		})
 		if err != nil {
 			t.Fatalf("ApplyStatus: %v", err)
@@ -267,10 +270,19 @@ func TestBlueFieldAndAMDFixturesDoNotCorruptConditions(t *testing.T) {
 
 		// AMD mapping reconciles its own card:
 		amdChildren := []any{
-			map[string]any{"kind": "DSCDevice", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{
+				"kind":   "DSCDevice",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
+			},
 			map[string]any{"kind": "DSCProfile"},
-			map[string]any{"kind": "DSCFirmware", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
-			map[string]any{"kind": "DSCNodePolicy", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{
+				"kind":   "DSCFirmware",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
+			},
+			map[string]any{
+				"kind":   "DSCNodePolicy",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}},
+			},
 		}
 		st, err = ApplyStatus(amdSpec, amdCard, amdChildren)
 		if err != nil {

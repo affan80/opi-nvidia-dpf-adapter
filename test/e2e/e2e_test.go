@@ -334,7 +334,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 
 			By("terminating the active leader pod to trigger failover")
-			cmd := exec.Command("kubectl", "delete", "pod", initialLeader, "-n", namespace)
+			// Lease holderIdentity is "<pod-name>_<pod-uid>"; kubectl needs only the pod name.
+			leaderPod := strings.Split(initialLeader, "_")[0]
+			cmd := exec.Command("kubectl", "delete", "pod", leaderPod, "-n", namespace)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete leader pod")
 
@@ -347,7 +349,7 @@ var _ = Describe("Manager", Ordered, func() {
 				newLeader := strings.TrimSpace(output)
 				g.Expect(newLeader).To(ContainSubstring("controller-manager"))
 				g.Expect(newLeader).NotTo(Equal(initialLeader), "Leader should have changed after failover")
-				controllerPodName = newLeader
+				controllerPodName = strings.Split(newLeader, "_")[0]
 			}).Should(Succeed())
 		})
 

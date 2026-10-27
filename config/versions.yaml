@@ -11,7 +11,7 @@ kubernetes:
   # k3s on dh2. Go modules track the same minor.
   version: v1.36.4
   distribution: k3s
-  goModule: v0.36.0
+  goModule: v0.36.5
 
 opi:
   group: config.openshift.io

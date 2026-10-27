@@ -8,17 +8,18 @@ updates:
     labels:
       - dependencies
     # v0.25 of controller-runtime is Kubernetes 1.37. Lab k3s is v1.36.4
-    # (config/versions.yaml goModule v0.36.0). Stay on v0.24.x until the
+    # (config/versions.yaml goModule v0.36.5). Stay on v0.24.x until the
     # cluster pin moves.
     ignore:
       - dependency-name: sigs.k8s.io/controller-runtime
         versions: [">=0.25.0"]
-      - dependency-name: k8s.io/api
-        versions: [">=0.37.0"]
-      - dependency-name: k8s.io/apimachinery
-        versions: [">=0.37.0"]
-      - dependency-name: k8s.io/client-go
-        versions: [">=0.37.0"]
+      # k8s.io modules are pinned to the lab k3s minor (1.36) with exact
+      # versions enforced by config/versions.yaml + guard tests
+      # (TestPinnedVersionsAgree, TestPatchedGovulnDependencies). Bump them
+      # only via a deliberate versions.yaml + go.mod update, not via dependabot:
+      # >=0.36.1 blocks both patch and minor bumps.
+      - dependency-name: "k8s.io/*"
+        versions: [">=0.36.1"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

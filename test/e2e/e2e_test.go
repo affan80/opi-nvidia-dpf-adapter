@@ -208,18 +208,20 @@ var _ = Describe("Manager", Ordered, func() {
 				podOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
 				podNames := utils.GetNonEmptyLines(podOutput)
-				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
+				g.Expect(len(podNames)).To(Equal(2), "expected 2 controller pods running")
 				controllerPodName = podNames[0]
-				g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
-				By("validating the pod's status")
-				cmd = exec.Command("kubectl", "get",
-					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-					"-n", namespace,
-				)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
+				By("validating each pod's status")
+				for _, name := range podNames {
+					g.Expect(name).To(ContainSubstring("controller-manager"))
+					cmd = exec.Command("kubectl", "get",
+						"pods", name, "-o", "jsonpath={.status.phase}",
+						"-n", namespace,
+					)
+					output, err := utils.Run(cmd)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(output).To(Equal("Running"), "Incorrect controller-manager pod status")
+				}
 			}
 			Eventually(verifyControllerUp).Should(Succeed())
 		})
@@ -317,6 +319,38 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
+		})
+
+		It("should maintain only one active leader and failover when the leader pod is terminated", func() {
+			By("verifying the leader election lease exists and only one leader is active")
+			var initialLeader string
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "lease", "9ab915d2.opi.nvidia.com",
+					"-n", namespace, "-o", "jsonpath={.spec.holderIdentity}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to get lease")
+				initialLeader = strings.TrimSpace(output)
+				g.Expect(initialLeader).To(ContainSubstring("controller-manager"))
+			}).Should(Succeed())
+
+			By("terminating the active leader pod to trigger failover")
+			// Lease holderIdentity is "<pod-name>_<pod-uid>"; kubectl needs only the pod name.
+			leaderPod := strings.Split(initialLeader, "_")[0]
+			cmd := exec.Command("kubectl", "delete", "pod", leaderPod, "-n", namespace)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to delete leader pod")
+
+			By("verifying the other replica acquires leadership")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "lease", "9ab915d2.opi.nvidia.com",
+					"-n", namespace, "-o", "jsonpath={.spec.holderIdentity}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred(), "Failed to get lease after failover")
+				newLeader := strings.TrimSpace(output)
+				g.Expect(newLeader).To(ContainSubstring("controller-manager"))
+				g.Expect(newLeader).NotTo(Equal(initialLeader), "Leader should have changed after failover")
+				controllerPodName = strings.Split(newLeader, "_")[0]
+			}).Should(Succeed())
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks

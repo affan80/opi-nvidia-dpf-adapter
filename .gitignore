@@ -36,3 +36,14 @@ go.work
 
 # Live lab CRD dumps. They contain host addresses.
 evidence/lab-api-schema/
+
+# macOS metadata
+.DS_Store
+
+# AI editor / agent configs
+.cursor/
+.gemini/
+AGENTS.md
+
+# Evidence logs (generated locally)
+evidence/*.log

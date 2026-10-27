@@ -291,7 +291,7 @@ Details: [docs/api-versions.md](docs/api-versions.md).
 
 | API | Version |
 |---|---|
-| Kubernetes | v1.36.4 (k3s v1.36.4+k3s1, modules v0.36.0) |
+| Kubernetes | v1.36.4 (k3s v1.36.4+k3s1, modules v0.36.5) |
 | OPI CRDs | `config.openshift.io/v1` @ `c107ef719f74d4f841ceb1ed45bbd293b3739a3c` |
 | NVIDIA DPF | v26.4.0, support window `[v26.4.0, v27.0.0)` |
 

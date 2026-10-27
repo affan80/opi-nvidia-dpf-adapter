@@ -154,6 +154,11 @@ in CI via `make test`. It asserts, per vendor:
 - the vendor-scoped condition mirrors `True` once status-capable children report
   ready, and that `Ready` is **absent** on the source
 - cleanup on delete, including annotation-tracked cross-namespace children
+- **stale-child convergence**: create, update, shrink, rename and delete each
+  converge to exactly the expected child set. Kubernetes GC only reclaims
+  children when the source dies, so a shrunk or renamed chain member is pruned
+  by the controller on the spec update itself — no orphaned old children, on
+  both the owner-reference track and the annotation track
 - multi-vendor isolation: with two vendors' sources in one cluster, each
   produces its own object set and none of the other's
 - **the detection handshake**: the VSP answers `Init`, `GetDevices` on both the

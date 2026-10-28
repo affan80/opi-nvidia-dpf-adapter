@@ -90,11 +90,11 @@ func TestManagerDeploymentReplicasAndElection(t *testing.T) {
 	enabled := false
 	for _, c := range doc.Spec.Template.Spec.Containers {
 		for _, arg := range c.Args {
-			switch {
-			case arg == "--leader-elect=false" || arg == "--leader-elect=0":
+			switch arg {
+			case "--leader-elect=false", "--leader-elect=0":
 				t.Fatalf("Deployment arg %q disables election while replicas=%d; two writers would share DpuOperatorConfig",
 					arg, doc.Spec.Replicas)
-			case arg == "--leader-elect" || arg == "--leader-elect=true":
+			case "--leader-elect", "--leader-elect=true":
 				enabled = true
 			}
 		}

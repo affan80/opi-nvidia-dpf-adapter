@@ -18,9 +18,11 @@ package vsp
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/retry"
@@ -97,7 +99,10 @@ func reportReadyOnGVKs(
 	return nil
 }
 
-func patchReady(ctx context.Context, c client.Client, gvk schema.GroupVersionKind, obj *unstructured.Unstructured, healthy bool) error {
+func patchReady(
+	ctx context.Context, c client.Client, gvk schema.GroupVersionKind,
+	obj *unstructured.Unstructured, healthy bool,
+) error {
 	key := client.ObjectKeyFromObject(obj)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		fresh := &unstructured.Unstructured{}
@@ -113,11 +118,11 @@ func patchReady(ctx context.Context, c client.Client, gvk schema.GroupVersionKin
 }
 
 func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
-	wantStatus := "True"
+	wantStatus := string(metav1.ConditionTrue)
 	reason := readyReasonHealthy
 	message := readyMsgHealthy
 	if !healthy {
-		wantStatus = "False"
+		wantStatus = string(metav1.ConditionFalse)
 		reason = readyReasonUnhealthy
 		message = readyMsgUnhealthy
 	}
@@ -137,10 +142,7 @@ func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
 			continue
 		}
 		found = true
-		next := map[string]any{}
-		for k, v := range m {
-			next[k] = v
-		}
+		next := maps.Clone(m)
 		if next["status"] != wantStatus || next["reason"] != reason || next["message"] != message {
 			next["status"] = wantStatus
 			next["reason"] = reason

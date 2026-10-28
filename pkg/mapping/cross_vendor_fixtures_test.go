@@ -71,6 +71,7 @@ func TestBlueFieldAndAMDFixturesDoNotCreateEachOthersChildren(t *testing.T) {
 		"name": "bf3-worker",
 		"annotations": map[string]any{
 			"provisioning.dpu.nvidia.com/serial-number": "MT1234FIXTURE",
+			"discovery.opiproject.org/product-name":     "BlueField-3",
 			"provisioning.dpu.nvidia.com/pci-address":   "0000-03-00",
 			"dpu.nvidia.com/bfb-url":                    "https://example.invalid/fw.bfb",
 		},
@@ -175,7 +176,8 @@ func TestBlueFieldAndAMDFixturesDoNotCorruptConditions(t *testing.T) {
 		// Even when passed children, the ownership gate status.when must evaluate false
 		// and return nil.
 		st, err := ApplyStatus(amdSpec, bfFixture, []any{
-			map[string]any{"kind": "DSCDevice", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{"kind": "DSCDevice",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
 		})
 		if err != nil {
 			t.Fatalf("ApplyStatus: %v", err)
@@ -226,6 +228,9 @@ func TestBlueFieldAndAMDFixturesDoNotCorruptConditions(t *testing.T) {
 	t.Run("Sequential multi-vendor reconciliation preserves own conditions without corruption", func(t *testing.T) {
 		// 1. Start BlueField card with daemon Ready
 		bfCard := cloneMap(bfFixture)
+		bfCard["metadata"].(map[string]any)["annotations"] = map[string]any{
+			"discovery.opiproject.org/product-name": "BlueField-3",
+		}
 		bfCard["status"] = map[string]any{"conditions": []any{daemonReady}}
 
 		// DPF mapping reconciles its own card:
@@ -267,10 +272,13 @@ func TestBlueFieldAndAMDFixturesDoNotCorruptConditions(t *testing.T) {
 
 		// AMD mapping reconciles its own card:
 		amdChildren := []any{
-			map[string]any{"kind": "DSCDevice", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{"kind": "DSCDevice",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
 			map[string]any{"kind": "DSCProfile"},
-			map[string]any{"kind": "DSCFirmware", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
-			map[string]any{"kind": "DSCNodePolicy", "status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{"kind": "DSCFirmware",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
+			map[string]any{"kind": "DSCNodePolicy",
+				"status": map[string]any{"conditions": []any{map[string]any{"type": "Ready", "status": "True"}}}},
 		}
 		st, err = ApplyStatus(amdSpec, amdCard, amdChildren)
 		if err != nil {

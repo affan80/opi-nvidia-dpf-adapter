@@ -334,7 +334,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}).Should(Succeed())
 
 			By("terminating the active leader pod to trigger failover")
-			cmd := exec.Command("kubectl", "delete", "pod", initialLeader, "-n", namespace)
+			// controller-runtime uses <pod-name>_<uuid> as the Lease holder identity.
+			initialLeaderPod, _, _ := strings.Cut(initialLeader, "_")
+			cmd := exec.Command("kubectl", "delete", "pod", initialLeaderPod, "-n", namespace)
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to delete leader pod")
 

@@ -340,7 +340,7 @@ func k8sMinor(ver string) string {
 	if len(parts) < 2 {
 		return ver
 	}
-	// v1.36.4 and v0.36.0 both mean Kubernetes 1.36.
+	// v1.36.4 and v0.36.5 both mean Kubernetes 1.36.
 	if parts[0] == "0" || parts[0] == "1" {
 		return parts[1]
 	}

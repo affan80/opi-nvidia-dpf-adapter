@@ -34,6 +34,11 @@ as `UnsupportedHardware`. Missing observation gives `HardwareIdentityMissing`;
 conflicting declaration gives `HardwareIdentityMismatch`. Existing DPF children
 are preserved for diagnosis.
 
+The mapping's `pruneWhen` guard preserves those provisioned resources when
+hardware becomes ineligible, including with controllers that prune stale
+children on spec updates. Explicit source deletion still performs finalizer
+cleanup; service-chain shrink/rename cleanup keeps its default behavior.
+
 `DPFHardwareCompatible=True` means generation eligibility for this profile.
 It does not validate exact SKU, memory, firmware, host OS, power cabling, worker
 registration or packet forwarding. The

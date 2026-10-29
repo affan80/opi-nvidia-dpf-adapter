@@ -174,6 +174,7 @@ BlueField host. Do not apply the envtest stub CRDs there.
 
 | Action | What happens | What must not happen |
 |---|---|---|
+| Update, shrink or rename a chain in an OPI source | The controller prunes children the new desired set no longer names (owner-ref or annotation track, matched on source UID), then re-mirrors status | Leave orphaned old children behind; delete children that still appear in the desired set |
 | Delete an OPI `DataProcessingUnit` or `ServiceFunctionChain` | Same-ns children GC via controller ownerRef. Cross-ns children deleted by the cleanup finalizer, then the finalizer is removed | Leave annotation-tracked children; delete DPF CRDs; delete other vendors' objects |
 | `make undeploy` | Remove translator + VSP Deployment/RBAC from the cluster | Delete OPI or DPF CRDs; helm-uninstall DPF; wipe lab `/etc` |
 | `make uninstall` | No-op (this repo owns no CRDs) | `kubectl delete crd` for `config.openshift.io` or `*.dpu.nvidia.com` |

@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/util/retry"
@@ -38,6 +37,9 @@ const (
 	readyReasonUnhealthy = "DeviceUnhealthy"
 	readyMsgHealthy      = "VSP handshake enumerated a healthy device"
 	readyMsgUnhealthy    = "VSP handshake reported no healthy device"
+
+	condStatusTrue  = "True"
+	condStatusFalse = "False"
 )
 
 // ReportReady is the vsp-opi-daemon writer of Ready. The translator and
@@ -118,11 +120,11 @@ func patchReady(
 }
 
 func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
-	wantStatus := string(metav1.ConditionTrue)
+	wantStatus := condStatusTrue
 	reason := readyReasonHealthy
 	message := readyMsgHealthy
 	if !healthy {
-		wantStatus = string(metav1.ConditionFalse)
+		wantStatus = condStatusFalse
 		reason = readyReasonUnhealthy
 		message = readyMsgUnhealthy
 	}
@@ -142,7 +144,8 @@ func upsertReadyCondition(obj *unstructured.Unstructured, healthy bool) bool {
 			continue
 		}
 		found = true
-		next := maps.Clone(m)
+		next := map[string]any{}
+		maps.Copy(next, m)
 		if next["status"] != wantStatus || next["reason"] != reason || next["message"] != message {
 			next["status"] = wantStatus
 			next["reason"] = reason

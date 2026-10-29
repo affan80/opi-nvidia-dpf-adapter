@@ -573,3 +573,146 @@ func expectAbsent(gvk schema.GroupVersionKind, nn types.NamespacedName) {
 	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 		"%s %s should not exist: the other vendor's mapping claimed this source", gvk.Kind, nn)
 }
+
+// Task 04.04's DONE WHEN in executable form: create, update, shrink, rename
+// and delete must each converge to exactly the expected child set, with no
+// orphaned member of a chain that was shrunk or renamed. Kubernetes GC only
+// reclaims children when the source itself dies, so every spec change needs
+// active pruning; this is asserted against the real apiserver so server-side
+// apply and live UIDs are in play.
+var _ = Describe("Stale child convergence (create, update, shrink, rename, delete)", func() {
+	// setNFs rewrites spec.networkFunctions on the stored source and persists it.
+	setNFs := func(nn types.NamespacedName, names ...string) {
+		GinkgoHelper()
+		src := getObject(sfcGVK, nn)
+		nfs := make([]any, 0, len(names))
+		for _, n := range names {
+			nfs = append(nfs, map[string]any{"name": n, "chart": map[string]any{
+				"repository": "https://helm.ngc.nvidia.com/nvidia/doca", "name": n, "version": "v26.4.0"}})
+		}
+		Expect(unstructured.SetNestedField(src.Object, nfs, "spec", "networkFunctions")).To(Succeed())
+		Expect(k8sClient.Update(ctx, src)).To(Succeed())
+	}
+
+	It("converges the child set on every spec change (owner-reference track)", func() {
+		ensureNamespace("opi")
+		ownNN := types.NamespacedName{Name: "conv-chain", Namespace: "opi"}
+
+		src := fromYAML(`
+apiVersion: config.openshift.io/v1
+kind: ServiceFunctionChain
+metadata:
+  name: conv-chain
+  namespace: opi
+spec:
+  networkFunctions:
+  - name: alpha
+    chart: {repository: "https://helm.ngc.nvidia.com/nvidia/doca", name: alpha, version: v26.3.1}
+  - name: beta
+    chart: {repository: "https://helm.ngc.nvidia.com/nvidia/doca", name: beta, version: v26.3.1}
+  - name: gamma
+    chart: {repository: "https://helm.ngc.nvidia.com/nvidia/doca", name: gamma, version: v26.3.1}
+`)
+		Expect(k8sClient.Create(ctx, src)).To(Succeed())
+		DeferCleanup(func() {
+			_ = k8sClient.Delete(ctx, src)
+			for _, n := range []string{"alpha", "beta", "gamma", "delta"} {
+				child := &unstructured.Unstructured{}
+				child.SetGroupVersionKind(svcGVK)
+				child.SetName(n)
+				child.SetNamespace("opi")
+				_ = k8sClient.Delete(ctx, child)
+				ifc := &unstructured.Unstructured{}
+				ifc.SetGroupVersionKind(ifcGVK)
+				ifc.SetName(n + "-ifc")
+				ifc.SetNamespace("opi")
+				_ = k8sClient.Delete(ctx, ifc)
+			}
+			chain := &unstructured.Unstructured{}
+			chain.SetGroupVersionKind(chainGVK)
+			chain.SetName("conv-chain")
+			chain.SetNamespace("opi")
+			_ = k8sClient.Delete(ctx, chain)
+		})
+
+		By("creating three children for three chain members")
+		reconcileOnce("servicefunctionchain", ownNN)
+		for _, n := range []string{"alpha", "beta", "gamma"} {
+			getObject(svcGVK, types.NamespacedName{Name: n, Namespace: "opi"})
+		}
+
+		By("updating alpha in place: same name, new chart version, still one child")
+		setNFs(ownNN, "alpha", "beta", "gamma")
+		reconcileOnce("servicefunctionchain", ownNN)
+		alpha := getObject(svcGVK, types.NamespacedName{Name: "alpha", Namespace: "opi"})
+		ver, found, err := unstructured.NestedString(alpha.Object, "spec", "helmChart", "source", "version")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(ver).To(Equal("v26.4.0"))
+
+		By("shrinking: gamma is gone in the same reconcile, alpha and beta remain")
+		setNFs(ownNN, "alpha", "beta")
+		reconcileOnce("servicefunctionchain", ownNN)
+		expectAbsent(svcGVK, types.NamespacedName{Name: "gamma", Namespace: "opi"})
+		expectAbsent(ifcGVK, types.NamespacedName{Name: "gamma-ifc", Namespace: "opi"})
+		getObject(svcGVK, types.NamespacedName{Name: "beta", Namespace: "opi"})
+
+		By("renaming beta to delta: beta's child is pruned, delta's is created")
+		setNFs(ownNN, "alpha", "delta")
+		reconcileOnce("servicefunctionchain", ownNN)
+		expectAbsent(svcGVK, types.NamespacedName{Name: "beta", Namespace: "opi"})
+		expectAbsent(ifcGVK, types.NamespacedName{Name: "beta-ifc", Namespace: "opi"})
+		getObject(svcGVK, types.NamespacedName{Name: "delta", Namespace: "opi"})
+		getObject(ifcGVK, types.NamespacedName{Name: "delta-ifc", Namespace: "opi"})
+
+		By("the surviving children still carry the source as controller owner")
+		assertControllerOwnerRef(alpha, "ServiceFunctionChain", "conv-chain",
+			string(getObject(sfcGVK, ownNN).GetUID()))
+	})
+
+	It("prunes on the annotation track and fully cleans up on delete", func() {
+		ensureNamespace("opi")
+		ensureNamespace(dpfNS)
+		xnn := types.NamespacedName{Name: "conv-xns", Namespace: "opi"}
+
+		src := fromYAML(`
+apiVersion: config.openshift.io/v1
+kind: ServiceFunctionChain
+metadata:
+  name: conv-xns
+  namespace: opi
+spec:
+  networkFunctions:
+  - name: alpha
+    chart: {repository: "https://helm.ngc.nvidia.com/nvidia/doca", name: alpha, version: v26.4.0}
+  - name: beta
+    chart: {repository: "https://helm.ngc.nvidia.com/nvidia/doca", name: beta, version: v26.4.0}
+`)
+		Expect(k8sClient.Create(ctx, src)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, src) })
+
+		reconcileOnce("servicefunctionchain-xns", xnn)
+		getObject(svcGVK, types.NamespacedName{Name: "beta", Namespace: dpfNS})
+
+		By("renaming beta to delta: the annotation-tracked child is pruned, not leaked")
+		xsrc := getObject(sfcGVK, xnn)
+		Expect(unstructured.SetNestedField(xsrc.Object, []any{
+			map[string]any{"name": "alpha", "chart": map[string]any{
+				"repository": "https://helm.ngc.nvidia.com/nvidia/doca", "name": "alpha", "version": "v26.4.0"}},
+			map[string]any{"name": "delta", "chart": map[string]any{
+				"repository": "https://helm.ngc.nvidia.com/nvidia/doca", "name": "delta", "version": "v26.4.0"}},
+		}, "spec", "networkFunctions")).To(Succeed())
+		Expect(k8sClient.Update(ctx, xsrc)).To(Succeed())
+		reconcileOnce("servicefunctionchain-xns", xnn)
+
+		expectAbsent(svcGVK, types.NamespacedName{Name: "beta", Namespace: dpfNS})
+		getObject(svcGVK, types.NamespacedName{Name: "delta", Namespace: dpfNS})
+
+		By("deleting the source: the finalizer reclaims every remaining child")
+		Expect(k8sClient.Delete(ctx, getObject(sfcGVK, xnn))).To(Succeed())
+		reconcileOnce("servicefunctionchain-xns", xnn)
+		expectAbsent(svcGVK, types.NamespacedName{Name: "alpha", Namespace: dpfNS})
+		expectAbsent(svcGVK, types.NamespacedName{Name: "delta", Namespace: dpfNS})
+		expectAbsent(sfcGVK, xnn)
+	})
+})

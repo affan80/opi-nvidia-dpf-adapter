@@ -48,7 +48,7 @@ func TestPatchedGovulnDependencies(t *testing.T) {
 		{"go.opentelemetry.io/otel/exporters/otlp/otlptrace", "v1.45.0", "GO-2026-6505"},
 		{"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc", "v1.45.0", "GO-2026-6505"},
 		{"go.opentelemetry.io/otel/sdk", "v1.45.0", "GO-2026-6505"},
-		{"k8s.io/apimachinery", "v0.36.0", "lab k3s minor must stay 1.36"},
+		{"k8s.io/apimachinery", "v0.36.5", "lab k3s minor must stay 1.36"},
 		{"k8s.io/client-go", "v0.36.0", "lab k3s minor must stay 1.36"},
 	} {
 		want := pin.pkg + " " + pin.ver

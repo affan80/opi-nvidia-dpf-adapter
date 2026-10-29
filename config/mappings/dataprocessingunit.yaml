@@ -13,6 +13,9 @@ source:
   group: config.openshift.io
   version: v1
   kind: DataProcessingUnit
+# Preserve provisioned hardware while inventory is missing or ineligible.
+# Explicit source deletion still runs finalizer cleanup.
+pruneWhen: "source.spec.?dpuProductName.orValue('') == 'BlueField-3' && source.metadata.?annotations['discovery.opiproject.org/product-name'].orValue('') == 'BlueField-3'"
 # Emitted children land in the source namespace, or dpf-operator-system when
 # the source is cluster-scoped. Declared once here instead of on every emit.
 defaults:
